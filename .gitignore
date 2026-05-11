@@ -1,0 +1,11 @@
+node_modules
+.env
+dist
+server/data
+client/dist
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
+.claude/
+server/.wwebjs_cache/
