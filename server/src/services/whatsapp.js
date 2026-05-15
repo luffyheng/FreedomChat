@@ -73,7 +73,16 @@ export async function initWhatsApp() {
     }),
     puppeteer: {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',      // prevents Chromium crash on VPS (limited /dev/shm)
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--single-process',             // reduces memory, avoids fork issues on small VPS
+      ],
     },
   });
 
@@ -349,10 +358,32 @@ function toJid(phone) {
   return `${digits}@c.us`;
 }
 
+function isFrameError(e) {
+  const msg = e?.message || '';
+  return msg.includes('detached frame') || msg.includes('Target closed') || msg.includes('Session closed');
+}
+
+function triggerRestart() {
+  console.error('[whatsapp] page/frame crashed — restarting client in 10s…');
+  status = 'disconnected';
+  client = null;
+  currentQr = null;
+  emit('wa:status', { status });
+  setTimeout(() => {
+    initWhatsApp().catch(e => console.error('[whatsapp] restart after crash failed:', e));
+  }, 10000);
+}
+
 export async function sendText(phone, text) {
   if (!client || status !== 'ready') throw new Error('WhatsApp not connected');
   const jid = toJid(phone);
-  const sent = await client.sendMessage(jid, text);
+  let sent;
+  try {
+    sent = await client.sendMessage(jid, text);
+  } catch (e) {
+    if (isFrameError(e)) triggerRestart();
+    throw e;
+  }
   db.prepare(
     'INSERT INTO messages (id, direction, phone, body, media_type, created_at) VALUES (?,?,?,?,?,?)'
   ).run(nanoid(), 'out', phone, text, null, Date.now());
@@ -425,7 +456,13 @@ export async function sendMedia(phone, { url, base64, mimetype, filename, captio
   } else {
     throw new Error('url or base64 required');
   }
-  const sent = await client.sendMessage(jid, media, { caption });
+  let sent;
+  try {
+    sent = await client.sendMessage(jid, media, { caption });
+  } catch (e) {
+    if (isFrameError(e)) triggerRestart();
+    throw e;
+  }
   db.prepare(
     'INSERT INTO messages (id, direction, phone, body, media_type, created_at) VALUES (?,?,?,?,?,?)'
   ).run(nanoid(), 'out', phone, caption || '', mimetype || 'media', Date.now());
