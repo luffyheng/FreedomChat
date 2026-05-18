@@ -31,7 +31,7 @@ export default function broadcastsRouter(io) {
           AND clm.phone   = REPLACE(REPLACE(REPLACE(t.phone,'@c.us',''),'@lid',''),'@g.us','')
          WHERE t.broadcast_id = ?
          ORDER BY t.rowid ASC
-         LIMIT 5000`
+         LIMIT 10000`
       )
       .all(bc.list_id || '', req.params.id);
 
@@ -204,6 +204,16 @@ export default function broadcastsRouter(io) {
       return res.status(400).json({ error: 'WhatsApp is not connected. Please connect WhatsApp first.' });
     }
     startBroadcast(req.params.id, io);
+    res.json({ ok: true });
+  });
+
+  router.post('/:id/send-now', (req, res) => {
+    const bc = db.prepare('SELECT * FROM broadcasts WHERE id = ?').get(req.params.id);
+    if (!bc) return res.status(404).json({ error: 'not found' });
+    if (bc.status !== 'running') return res.status(400).json({ error: 'broadcast is not running' });
+    // Clear the jitter timer so the next tick fires immediately
+    db.prepare('UPDATE broadcasts SET next_due_at = 0 WHERE id = ?').run(req.params.id);
+    io?.emit('broadcast:update', { id: req.params.id });
     res.json({ ok: true });
   });
 

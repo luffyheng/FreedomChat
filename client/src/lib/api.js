@@ -74,6 +74,7 @@ export const api = {
     start: (id) => req(`/api/broadcasts/${id}/start`, { method: 'POST' }),
     pause: (id) => req(`/api/broadcasts/${id}/pause`, { method: 'POST' }),
     retryFailed: (id) => req(`/api/broadcasts/${id}/retry-failed`, { method: 'POST' }),
+    sendNow: (id) => req(`/api/broadcasts/${id}/send-now`, { method: 'POST' }),
     remove: (id) => req(`/api/broadcasts/${id}`, { method: 'DELETE' }),
   },
   messages: {

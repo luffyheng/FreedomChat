@@ -1,5 +1,5 @@
 import db from '../db.js';
-import { sendText, sendMedia } from './whatsapp.js';
+import { sendText, sendMedia, getStatus } from './whatsapp.js';
 import { expandTemplate } from '../lib/spintax.js';
 
 let timer = null;
@@ -86,6 +86,11 @@ function nextResumeAt(hour = 10, minute = 0) {
  */
 async function tick() {
   const now = Date.now();
+
+  // If WhatsApp is not ready, skip the entire tick — don't record errors on targets
+  const { status: waStatus } = getStatus();
+  if (waStatus !== 'ready') return;
+
   const broadcasts = db
     .prepare('SELECT * FROM broadcasts WHERE status = ?')
     .all('running');
@@ -136,18 +141,26 @@ async function tick() {
       bumpDaily(bc.id, 1);
     } catch (e) {
       const MAX_ATTEMPTS = 3;
-      const attempts = (target.attempts || 0) + 1;
-      if (attempts >= MAX_ATTEMPTS) {
-        // Give up — mark terminally failed
-        db.prepare(
-          'UPDATE broadcast_targets SET status=?, error=?, attempts=? WHERE id=?'
-        ).run('failed', e.message, attempts, target.id);
-        db.prepare('UPDATE broadcasts SET failed = failed + 1 WHERE id = ?').run(bc.id);
+      const errMsg = e.message || '';
+      // Infrastructure errors (WA crash/disconnect) — don't burn a retry attempt
+      const isInfraError = errMsg.includes('WhatsApp not connected') ||
+        errMsg.includes('detached frame') ||
+        errMsg.includes('Target closed') ||
+        errMsg.includes('Session closed');
+      if (isInfraError) {
+        db.prepare('UPDATE broadcast_targets SET error=? WHERE id=?').run(errMsg, target.id);
       } else {
-        // Keep pending — will retry on a future tick
-        db.prepare(
-          'UPDATE broadcast_targets SET error=?, attempts=? WHERE id=?'
-        ).run(e.message, attempts, target.id);
+        const attempts = (target.attempts || 0) + 1;
+        if (attempts >= MAX_ATTEMPTS) {
+          db.prepare(
+            'UPDATE broadcast_targets SET status=?, error=?, attempts=? WHERE id=?'
+          ).run('failed', errMsg, attempts, target.id);
+          db.prepare('UPDATE broadcasts SET failed = failed + 1 WHERE id = ?').run(bc.id);
+        } else {
+          db.prepare(
+            'UPDATE broadcast_targets SET error=?, attempts=? WHERE id=?'
+          ).run(errMsg, attempts, target.id);
+        }
       }
     }
 

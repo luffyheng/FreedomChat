@@ -178,7 +178,15 @@ export default function Broadcast() {
       toast.error(err.message);
     }
   };
-  const pause  = async (id) => { await api.broadcasts.pause(id); };
+  const pause   = async (id) => { await api.broadcasts.pause(id); };
+  const sendNow = async (id) => {
+    try {
+      await api.broadcasts.sendNow(id);
+      toast.success('Sending next contact now…');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
   const remove = async (id) => {
     if (!confirm('Delete this dispatch? This cannot be undone.')) return;
     await api.broadcasts.remove(id);
@@ -226,6 +234,7 @@ export default function Broadcast() {
                 now={now}
                 onOpen={() => setOpenId(b.id)}
                 onPause={() => pause(b.id)}
+                onSendNow={() => sendNow(b.id)}
               />
             ))}
           </div>
@@ -514,6 +523,7 @@ export default function Broadcast() {
           onClose={() => setOpenId(null)}
           onStart={start}
           onPause={pause}
+          onSendNow={sendNow}
           onRemove={remove}
         />
       )}
@@ -636,7 +646,7 @@ function SafetyNote() {
 /* ══════════════════════════════════════════════════════════════════
    On-air station card
    ══════════════════════════════════════════════════════════════════ */
-function StationCard({ bc, now, onOpen, onPause }) {
+function StationCard({ bc, now, onOpen, onPause, onSendNow }) {
   const pct = bc.total ? Math.round((bc.sent / bc.total) * 100) : 0;
   const dailyDone = bc.last_dispatch_date === todayStr() ? bc.daily_sent : 0;
   const pausedToday = bc.daily_limit > 0 && dailyDone >= bc.daily_limit;
@@ -686,6 +696,13 @@ function StationCard({ bc, now, onOpen, onPause }) {
         <span className="num">
           {bc.daily_limit > 0 ? `today ${dailyDone}/${bc.daily_limit}` : 'no daily cap'} · {fmtMsRange(bc.min_delay_ms, bc.max_delay_ms)}
         </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onSendNow(); }}
+          className="btn-ghost btn-sm"
+          title="Skip delay — send next contact now"
+        >
+          ⚡ now
+        </button>
         <button
           onClick={(e) => { e.stopPropagation(); onPause(); }}
           className="btn-ghost btn-sm"
@@ -786,7 +803,7 @@ function StatusStamp({ status, pausedToday }) {
 /* ══════════════════════════════════════════════════════════════════
    Detail "theater"
    ══════════════════════════════════════════════════════════════════ */
-function DispatchTheater({ id, now, waReady, onClose, onStart, onPause, onRemove }) {
+function DispatchTheater({ id, now, waReady, onClose, onStart, onPause, onSendNow, onRemove }) {
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -968,6 +985,15 @@ function DispatchTheater({ id, now, waReady, onClose, onStart, onPause, onRemove
               <span className="num text-[10.5px] uppercase tracking-eyebrow text-ink-soft">
                 {data.status} · cadence {fmtMsRange(data.min_delay_ms, data.max_delay_ms)}
               </span>
+              {data.status === 'running' && (data.paused_until || 0) <= now && (
+                <button
+                  onClick={() => onSendNow(data.id)}
+                  className="btn btn-sm ml-2 text-[11px]"
+                  title="Skip the delay and send the next contact immediately"
+                >
+                  ⚡ Send now
+                </button>
+              )}
             </div>
 
             {/* progress */}
@@ -1170,7 +1196,7 @@ function RecipientRow({ t }) {
           {display && <span className="num text-[10.5px] text-ink-mute">{phoneOnly}</span>}
           {retrying && (
             <span className="num text-[10px] text-stamp-ochre uppercase tracking-eyebrow">
-              ↻ retry {t.attempts}/3
+              ↻ retry {t.attempts}/3{t.error ? ` · ${t.error}` : ''}
             </span>
           )}
           {t.error && !retrying && (
