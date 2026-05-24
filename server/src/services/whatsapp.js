@@ -284,6 +284,7 @@ export async function initWhatsApp() {
       const jid = msg.to || msg.id?.remote;
       if (!jid) return;
       const body = msg.body || '';
+      const trimmedBody = body.trim();
 
       // De-dupe against messages we just logged from the UI (same phone, body, recent).
       const since = Date.now() - 5000;
