@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Search, Info, CheckCheck, RefreshCw, FileText, Image as ImageIcon, Video, Music } from 'lucide-react';
+import { Send, Search, Info, CheckCheck, RefreshCw, FileText, Image as ImageIcon, Video, Music, Zap, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api.js';
 import { socket } from '../lib/socket.js';
@@ -102,14 +102,18 @@ export default function Inbox() {
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [showInfo, setShowInfo] = useState(true);
+  const [showQR, setShowQR] = useState(false);
+  const [quickReplies, setQuickReplies] = useState([]);
   const scrollRef = useRef(null);
 
   const loadThreads = () => api.messages.threads().then(setThreads);
+  const loadQR = () => api.quickReplies.list().then(setQuickReplies).catch(() => {});
   const loadMessages = (phone) =>
     api.messages.list(phone).then((m) => setMessages(m.slice().reverse()));
 
   useEffect(() => {
     loadThreads();
+    loadQR();
     const onMsg = () => {
       loadThreads();
       if (activePhone) loadMessages(activePhone);
@@ -148,6 +152,17 @@ export default function Inbox() {
     try {
       await api.whatsapp.send(activePhone, draft);
       setDraft('');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const sendQuickReply = async (qrId) => {
+    if (!activePhone) return;
+    setShowQR(false);
+    try {
+      const r = await api.quickReplies.send(qrId, activePhone);
+      toast.success(`Sent ${r.sent} item${r.sent === 1 ? '' : 's'}`);
     } catch (err) {
       toast.error(err.message);
     }
@@ -328,17 +343,58 @@ export default function Inbox() {
                 );
               })}
             </div>
-            <form onSubmit={send} className="p-3 bg-white border-t border-slate-200 flex gap-2">
-              <input
-                className="input flex-1"
-                placeholder="Type a message…"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-              />
-              <button className="btn-primary" type="submit">
-                <Send size={14} /> Send
-              </button>
-            </form>
+            <div className="bg-white border-t border-slate-200">
+              {/* Quick reply panel */}
+              {showQR && (
+                <div className="px-3 pt-3 pb-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Quick Replies</span>
+                    <button onClick={() => setShowQR(false)} className="text-slate-400 hover:text-slate-600">
+                      <X size={13} />
+                    </button>
+                  </div>
+                  {quickReplies.length === 0 ? (
+                    <div className="text-[12px] text-slate-400 py-2">
+                      No quick replies yet. <a href="/quick-replies" className="underline">Create one</a>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 pb-2">
+                      {quickReplies.map((qr) => (
+                        <button
+                          key={qr.id}
+                          onClick={() => sendQuickReply(qr.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] bg-slate-100 hover:bg-brand-50 hover:text-brand-700 border border-slate-200 hover:border-brand-300 rounded-full transition-colors"
+                        >
+                          {qr.trigger_code && (
+                            <span className="text-[10px] bg-slate-300 text-slate-600 rounded px-1 font-mono">{qr.trigger_code}</span>
+                          )}
+                          {qr.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <form onSubmit={send} className="p-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQR((v) => !v)}
+                  className={`btn-ghost shrink-0 ${showQR ? 'bg-brand-50 text-brand-600' : ''}`}
+                  title="Quick replies"
+                >
+                  <Zap size={15} />
+                </button>
+                <input
+                  className="input flex-1"
+                  placeholder="Type a message…"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                />
+                <button className="btn-primary" type="submit">
+                  <Send size={14} /> Send
+                </button>
+              </form>
+            </div>
           </>
         )}
       </div>

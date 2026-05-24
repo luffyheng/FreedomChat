@@ -20,6 +20,7 @@ import attributesRouter from './routes/attributes.js';
 import uploadsRouter, { UPLOAD_DIR } from './routes/uploads.js';
 import peopleActionsRouter from './routes/peopleActions.js';
 import contactListsRouter from './routes/contactLists.js';
+import quickRepliesRouter from './routes/quickReplies.js';
 import { startBroadcastScheduler } from './services/broadcast.js';
 import { initWhatsApp, setSocketIO, getStatus } from './services/whatsapp.js';
 import { startSequenceDispatcher } from './services/sequenceDispatcher.js';
@@ -60,6 +61,7 @@ app.use('/api/uploads', requireAuth, uploadsRouter);
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '1d' }));
 app.use('/api/people', requireAuth, peopleActionsRouter);
 app.use('/api/lists', requireAuth, contactListsRouter);
+app.use('/api/quick-replies', requireAuth, quickRepliesRouter);
 
 startSequenceDispatcher();
 startBroadcastScheduler(io);

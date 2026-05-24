@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, QrCode, Workflow, Users, Send, MessageSquare,
-  Clock, FolderOpen, LogOut,
+  Clock, FolderOpen, LogOut, Zap,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { socket } from '../lib/socket.js';
@@ -17,7 +17,8 @@ const navItems = [
   { to: '/contacts',  label: 'People',     icon: Users },
   { to: '/lists',     label: 'Lists',      icon: FolderOpen },
   { to: '/broadcast', label: 'Broadcasts', icon: Send },
-  { to: '/inbox',     label: 'Inbox',      icon: MessageSquare },
+  { to: '/inbox',         label: 'Inbox',         icon: MessageSquare },
+  { to: '/quick-replies', label: 'Quick Replies',  icon: Zap },
 ];
 
 const statusDot = {

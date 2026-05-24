@@ -81,7 +81,6 @@ export async function initWhatsApp() {
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu',
-        '--single-process',             // reduces memory, avoids fork issues on small VPS
       ],
     },
   });
@@ -295,6 +294,36 @@ export async function initWhatsApp() {
         .get(jid, body, since);
       if (dup) return;
 
+      // Quick reply trigger: body is purely digits (e.g. "1", "13")
+      // Each unique digit maps to a quick_reply trigger_code → send its items
+      const trimmedBody = body.trim();
+      if (/^\d+$/.test(trimmedBody) && trimmedBody.length <= 5 && !msg.hasMedia) {
+        const codes = [...new Set(trimmedBody.split(''))];
+        let triggered = false;
+        for (const code of codes) {
+          const qr = db.prepare('SELECT * FROM quick_replies WHERE trigger_code = ?').get(code);
+          if (qr) {
+            triggered = true;
+            const items = db
+              .prepare('SELECT * FROM quick_reply_items WHERE quick_reply_id = ? ORDER BY sort_order ASC')
+              .all(qr.id);
+            for (const item of items) {
+              try {
+                if (item.type === 'text') {
+                  await sendText(jid, item.content || '');
+                } else {
+                  await sendMedia(jid, { url: item.url, sendAudioAsVoice: item.type === 'audio' });
+                }
+                if (items.length > 1) await new Promise((r) => setTimeout(r, 600));
+              } catch (e) {
+                console.error('[quick-reply] send error:', e.message);
+              }
+            }
+          }
+        }
+        if (triggered) return; // don't log the trigger digit to the inbox
+      }
+
       let mediaUrl = null;
       let mimetype = null;
       if (msg.hasMedia) {
@@ -431,7 +460,7 @@ export async function sendPresence(phone, state = 'composing', ms = 1500) {
   }
 }
 
-export async function sendMedia(phone, { url, base64, mimetype, filename, caption }) {
+export async function sendMedia(phone, { url, base64, mimetype, filename, caption, sendAudioAsVoice = false }) {
   if (!client || status !== 'ready') throw new Error('WhatsApp not connected');
   const jid = toJid(phone);
   let media;
@@ -458,7 +487,7 @@ export async function sendMedia(phone, { url, base64, mimetype, filename, captio
   }
   let sent;
   try {
-    sent = await client.sendMessage(jid, media, { caption });
+    sent = await client.sendMessage(jid, media, { caption, sendAudioAsVoice });
   } catch (e) {
     if (isFrameError(e)) triggerRestart();
     throw e;

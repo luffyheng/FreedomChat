@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self';" />
+  <title>Luffy's Kingdom</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">L</div>
+        <div class="brand-name">Luffy's Kingdom</div>
+      </div>
+
+      <div id="account-list"></div>
+
+      <div class="sidebar-footer">
+        <button id="add-account" class="btn-add">+ New Account</button>
+        <button id="import-account" class="btn-ghost">Import Existing</button>
+        <button id="rename-account" class="btn-ghost">Rename Active</button>
+        <button id="change-photo" class="btn-ghost">Change Photo</button>
+        <button id="toggle-mute" class="btn-ghost">Mute Notifications</button>
+        <button id="remove-account" class="btn-ghost danger">Remove Active</button>
+      </div>
+    </aside>
+
+    <main id="content">
+      <div id="empty-state" class="empty">
+        <div class="empty-card">
+          <h1>No accounts yet</h1>
+          <p>Click <strong>+ New Account</strong> to open a fresh WhatsApp Web session and scan its QR with your phone.</p>
+        </div>
+      </div>
+      <div id="webview-container"></div>
+    </main>
+  </div>
+
+  <!-- Modal for prompts/confirms (Electron has no window.prompt) -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h3 id="modal-title">Title</h3>
+      <p id="modal-message"></p>
+      <input id="modal-input" type="text" />
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn-ghost">Cancel</button>
+        <button id="modal-ok" class="btn-add">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

@@ -253,4 +253,25 @@ for (const [name, type] of btCols) {
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_bt_message_id ON broadcast_targets(message_id)`); } catch {}
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_bt_phone ON broadcast_targets(phone)`); } catch {}
 
+// Quick Replies — pre-built bundles (text + audio + media) triggered by keyword
+db.exec(`
+CREATE TABLE IF NOT EXISTS quick_replies (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  trigger_code TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_trigger ON quick_replies(trigger_code) WHERE trigger_code IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS quick_reply_items (
+  id TEXT PRIMARY KEY,
+  quick_reply_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  content TEXT,
+  url TEXT,
+  sort_order INTEGER DEFAULT 0,
+  FOREIGN KEY(quick_reply_id) REFERENCES quick_replies(id) ON DELETE CASCADE
+);
+`);
+
 export default db;

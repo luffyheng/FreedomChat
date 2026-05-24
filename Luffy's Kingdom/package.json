@@ -1,0 +1,44 @@
+{
+  "name": "luffys-kingdom",
+  "productName": "Luffy's Kingdom",
+  "version": "1.0.0",
+  "description": "Multi-account WhatsApp Web client",
+  "main": "main.js",
+  "author": "Luffy",
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-packager . \"Luffy's Kingdom\" --platform=win32 --arch=x64 --out=dist --overwrite --asar --ignore=\"^/dist$\" --ignore=\"^/.gitignore$\""
+  },
+  "devDependencies": {
+    "@electron/packager": "^19.1.0",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.luffy.kingdom",
+    "productName": "Luffy's Kingdom",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "artifactName": "Luffys-Kingdom-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Luffy's Kingdom"
+    }
+  }
+}

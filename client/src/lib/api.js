@@ -152,6 +152,13 @@ export const api = {
       return res.json();
     },
   },
+  quickReplies: {
+    list: () => req('/api/quick-replies'),
+    create: (data) => req('/api/quick-replies', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => req(`/api/quick-replies/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    remove: (id) => req(`/api/quick-replies/${id}`, { method: 'DELETE' }),
+    send: (id, phone) => req(`/api/quick-replies/${id}/send`, { method: 'POST', body: JSON.stringify({ phone }) }),
+  },
   attributes: {
     list: (phone) => req(`/api/attributes/${encodeURIComponent(phone)}`),
     set: (phone, key, value) =>

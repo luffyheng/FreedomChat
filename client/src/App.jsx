@@ -11,6 +11,7 @@ import Sequences from './pages/Sequences.jsx';
 import SequenceDetail from './pages/SequenceDetail.jsx';
 import Lists from './pages/Lists.jsx';
 import ListDetail from './pages/ListDetail.jsx';
+import QuickReplies from './pages/QuickReplies.jsx';
 import Login from './pages/Login.jsx';
 import Forgot from './pages/Forgot.jsx';
 import Reset from './pages/Reset.jsx';
@@ -69,6 +70,7 @@ function Shell() {
           <Route path="/lists/:id" element={<ListDetail />} />
           <Route path="/broadcast" element={<Broadcast />} />
           <Route path="/inbox" element={<Inbox />} />
+          <Route path="/quick-replies" element={<QuickReplies />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
