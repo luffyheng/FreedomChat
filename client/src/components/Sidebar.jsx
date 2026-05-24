@@ -10,15 +10,15 @@ import { api } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const navItems = [
-  { to: '/',          label: 'Dashboard',  icon: LayoutDashboard, end: true },
-  { to: '/connect',   label: 'Connect',    icon: QrCode },
-  { to: '/flows',     label: 'Flows',      icon: Workflow },
-  { to: '/sequences', label: 'Sequences',  icon: Clock },
-  { to: '/contacts',  label: 'People',     icon: Users },
-  { to: '/lists',     label: 'Lists',      icon: FolderOpen },
-  { to: '/broadcast', label: 'Broadcasts', icon: Send },
-  { to: '/inbox',         label: 'Inbox',         icon: MessageSquare },
-  { to: '/quick-replies', label: 'Quick Replies',  icon: Zap },
+  { to: '/',              label: 'Dashboard',    icon: LayoutDashboard, end: true },
+  { to: '/connect',       label: 'Connect',      icon: QrCode },
+  { to: '/inbox',         label: 'Inbox',        icon: MessageSquare },
+  { to: '/quick-replies', label: 'Quick Replies', icon: Zap },
+  { to: '/broadcast',     label: 'Broadcasts',   icon: Send },
+  { to: '/contacts',      label: 'People',       icon: Users },
+  { to: '/lists',         label: 'Lists',        icon: FolderOpen },
+  { to: '/sequences',     label: 'Sequences',    icon: Clock },
+  { to: '/flows',         label: 'Flows',        icon: Workflow },
 ];
 
 const statusDot = {

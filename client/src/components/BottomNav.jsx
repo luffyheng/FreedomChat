@@ -2,10 +2,10 @@ import { NavLink } from 'react-router-dom';
 import { Zap, MessageSquare, Send, LayoutDashboard } from 'lucide-react';
 
 const tabs = [
-  { to: '/quick-replies', icon: Zap,           label: 'Quick Send' },
-  { to: '/inbox',         icon: MessageSquare, label: 'Inbox' },
-  { to: '/broadcast',     icon: Send,          label: 'Broadcast' },
   { to: '/',              icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/inbox',         icon: MessageSquare,   label: 'Inbox' },
+  { to: '/broadcast',     icon: Send,            label: 'Broadcast' },
+  { to: '/quick-replies', icon: Zap,             label: 'Quick Send' },
 ];
 
 export default function BottomNav() {
