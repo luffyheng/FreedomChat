@@ -273,5 +273,6 @@ CREATE TABLE IF NOT EXISTS quick_reply_items (
   FOREIGN KEY(quick_reply_id) REFERENCES quick_replies(id) ON DELETE CASCADE
 );
 `);
+try { db.exec(`ALTER TABLE quick_replies ADD COLUMN presence_seconds INTEGER DEFAULT 0`); } catch {}
 
 export default db;

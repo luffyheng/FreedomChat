@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import db from '../db.js';
-import { sendText, sendMedia } from '../services/whatsapp.js';
+import { sendText, sendMedia, sendPresence } from '../services/whatsapp.js';
 
 const router = Router();
 
@@ -21,7 +21,7 @@ router.get('/', (req, res) => {
 
 // POST /api/quick-replies — create
 router.post('/', (req, res) => {
-  const { name, trigger_code = null, items = [] } = req.body || {};
+  const { name, trigger_code = null, presence_seconds = 0, items = [] } = req.body || {};
   if (!name?.trim()) return res.status(400).json({ error: 'name required' });
 
   const id = nanoid();
@@ -33,8 +33,8 @@ router.post('/', (req, res) => {
     if (existing) return res.status(400).json({ error: `Trigger code "${trigger_code}" is already in use` });
   }
 
-  db.prepare('INSERT INTO quick_replies (id, name, trigger_code, created_at) VALUES (?,?,?,?)').run(
-    id, name.trim(), trigger_code || null, now
+  db.prepare('INSERT INTO quick_replies (id, name, trigger_code, presence_seconds, created_at) VALUES (?,?,?,?,?)').run(
+    id, name.trim(), trigger_code || null, Number(presence_seconds) || 0, now
   );
 
   const insertItem = db.prepare(
@@ -57,7 +57,7 @@ router.put('/:id', (req, res) => {
   const qr = db.prepare('SELECT * FROM quick_replies WHERE id = ?').get(req.params.id);
   if (!qr) return res.status(404).json({ error: 'not found' });
 
-  const { name, trigger_code, items } = req.body || {};
+  const { name, trigger_code, presence_seconds, items } = req.body || {};
 
   // Check duplicate trigger code (allow same ID to keep its own code)
   if (trigger_code !== undefined && trigger_code !== qr.trigger_code) {
@@ -70,6 +70,7 @@ router.put('/:id', (req, res) => {
   const updates = {};
   if (name !== undefined) updates.name = name.trim();
   if (trigger_code !== undefined) updates.trigger_code = trigger_code || null;
+  if (presence_seconds !== undefined) updates.presence_seconds = Number(presence_seconds) || 0;
 
   if (Object.keys(updates).length) {
     const sql = 'UPDATE quick_replies SET ' + Object.keys(updates).map((k) => `${k} = ?`).join(', ') + ' WHERE id = ?';
@@ -114,6 +115,13 @@ router.post('/:id/send', async (req, res) => {
   ).all(req.params.id);
 
   try {
+    // Show presence animation before first item
+    const presenceSec = Number(qr.presence_seconds || 0);
+    if (presenceSec > 0 && items.length > 0) {
+      const presenceState = items[0].type === 'audio' ? 'recording' : 'composing';
+      await sendPresence(phone, presenceState, presenceSec * 1000);
+    }
+
     for (const item of items) {
       if (item.type === 'text') {
         await sendText(phone, item.content || '');

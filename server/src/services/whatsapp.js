@@ -294,30 +294,41 @@ export async function initWhatsApp() {
         .get(jid, body, since);
       if (dup) return;
 
-      // Quick reply trigger: body is purely digits (e.g. "1", "13")
-      // Each unique digit maps to a quick_reply trigger_code → send its items
-      const trimmedBody = body.trim();
-      if (/^\d+$/.test(trimmedBody) && trimmedBody.length <= 5 && !msg.hasMedia) {
-        const codes = [...new Set(trimmedBody.split(''))];
+      // Quick reply trigger: body is digits optionally followed by # (e.g. "1", "2#", "13#")
+      // Try exact match first, then digit-by-digit for combos like "13" → sends reply 1 + reply 3
+      const triggerMatch = trimmedBody.match(/^(\d+)#?$/);
+      if (triggerMatch && triggerMatch[1].length <= 10 && !msg.hasMedia) {
+        const digits = triggerMatch[1];
+        // Try full code first (e.g. "13" as a single trigger), then individual digits
+        const exactQr = db.prepare('SELECT * FROM quick_replies WHERE trigger_code = ?').get(digits);
+        const codesToTry = exactQr ? [digits] : [...new Set(digits.split(''))];
         let triggered = false;
-        for (const code of codes) {
-          const qr = db.prepare('SELECT * FROM quick_replies WHERE trigger_code = ?').get(code);
+        for (const code of codesToTry) {
+          const qr = exactQr && code === digits ? exactQr
+            : db.prepare('SELECT * FROM quick_replies WHERE trigger_code = ?').get(code);
           if (qr) {
             triggered = true;
             const items = db
               .prepare('SELECT * FROM quick_reply_items WHERE quick_reply_id = ? ORDER BY sort_order ASC')
               .all(qr.id);
-            for (const item of items) {
-              try {
+            try {
+              // Show presence animation before sending
+              const presenceSec = Number(qr.presence_seconds || 0);
+              if (presenceSec > 0 && items.length > 0) {
+                const firstType = items[0].type;
+                const presenceState = firstType === 'audio' ? 'recording' : 'composing';
+                await sendPresence(jid, presenceState, presenceSec * 1000);
+              }
+              for (const item of items) {
                 if (item.type === 'text') {
                   await sendText(jid, item.content || '');
                 } else {
                   await sendMedia(jid, { url: item.url, sendAudioAsVoice: item.type === 'audio' });
                 }
                 if (items.length > 1) await new Promise((r) => setTimeout(r, 600));
-              } catch (e) {
-                console.error('[quick-reply] send error:', e.message);
               }
+            } catch (e) {
+              console.error('[quick-reply] send error:', e.message);
             }
           }
         }

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Plus, Trash2, Edit2, X, Save, Zap, Type, Mic, Image as ImageIcon,
-  Video, FileText, GripVertical, ChevronDown, ChevronUp, Send,
+  Video, FileText, GripVertical, ChevronDown, ChevronUp, Send, Clock,
+  Search, User,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -24,22 +25,55 @@ function emptyItem() {
   return { type: 'text', content: '', url: '' };
 }
 
+function formatPhone(phone) {
+  // Trim country code prefix for display, keep original for sending
+  return phone?.replace(/^60/, '0') || phone || '';
+}
+
 export default function QuickReplies() {
   const [replies, setReplies] = useState([]);
-  const [editing, setEditing] = useState(null); // null | 'new' | { id, ... }
+  const [editing, setEditing] = useState(null);
   const [sendingId, setSendingId] = useState(null);
   const [sendPhone, setSendPhone] = useState('');
+  const [threads, setThreads] = useState([]);
+  const [threadSearch, setThreadSearch] = useState('');
+  const [threadsLoading, setThreadsLoading] = useState(false);
 
   const load = () => api.quickReplies.list().then(setReplies);
 
   useEffect(() => { load(); }, []);
 
-  const openNew = () => setEditing({ id: null, name: '', trigger_code: '', items: [emptyItem()] });
-  const openEdit = (r) => setEditing({ ...r, trigger_code: r.trigger_code || '', items: r.items?.length ? r.items : [emptyItem()] });
+  const loadThreads = useCallback(async () => {
+    if (threads.length > 0) return; // already loaded
+    setThreadsLoading(true);
+    try {
+      const data = await api.messages.threads();
+      setThreads(Array.isArray(data) ? data : []);
+    } catch {
+      setThreads([]);
+    } finally {
+      setThreadsLoading(false);
+    }
+  }, [threads.length]);
+
+  const openSend = (id) => {
+    setSendingId(sendingId === id ? null : id);
+    setSendPhone('');
+    setThreadSearch('');
+    if (sendingId !== id) loadThreads();
+  };
+
+  const openNew = () => setEditing({ id: null, name: '', trigger_code: '', presence_seconds: 0, items: [emptyItem()] });
+  const openEdit = (r) => setEditing({
+    ...r,
+    trigger_code: r.trigger_code || '',
+    presence_seconds: r.presence_seconds || 0,
+    items: r.items?.length ? r.items : [emptyItem()],
+  });
   const closeEdit = () => setEditing(null);
 
   const save = async () => {
-    const { id, name, trigger_code, items } = editing;
+    const { id, name, trigger_code, presence_seconds, items } = editing;
     if (!name.trim()) { toast.error('Name is required'); return; }
     const validItems = items.filter((it) => it.type === 'text' ? it.content?.trim() : it.url?.trim());
     if (!validItems.length) { toast.error('Add at least one item with content'); return; }
@@ -47,6 +81,7 @@ export default function QuickReplies() {
       const payload = {
         name: name.trim(),
         trigger_code: trigger_code.trim() || null,
+        presence_seconds: Number(presence_seconds) || 0,
         items: validItems.map((it, i) => ({ ...it, sort_order: i })),
       };
       if (id) {
@@ -69,10 +104,11 @@ export default function QuickReplies() {
     load();
   };
 
-  const handleSend = async (id) => {
-    if (!sendPhone.trim()) { toast.error('Enter a phone number'); return; }
+  const handleSend = async (id, phone) => {
+    const target = (phone || sendPhone).trim();
+    if (!target) { toast.error('Select or enter a phone number'); return; }
     try {
-      const r = await api.quickReplies.send(id, sendPhone.trim());
+      const r = await api.quickReplies.send(id, target);
       toast.success(`Sent ${r.sent} item${r.sent === 1 ? '' : 's'}`);
       setSendingId(null);
       setSendPhone('');
@@ -100,6 +136,17 @@ export default function QuickReplies() {
       return { ...prev, items };
     });
   };
+
+  // Filter threads by search
+  const filteredThreads = threads.filter((t) => {
+    if (!threadSearch.trim()) return true;
+    const q = threadSearch.toLowerCase();
+    return (
+      (t.name || '').toLowerCase().includes(q) ||
+      (t.phone || '').includes(q) ||
+      formatPhone(t.phone || '').includes(q)
+    );
+  }).slice(0, 20);
 
   return (
     <div className="min-h-full bg-paper-50">
@@ -140,6 +187,11 @@ export default function QuickReplies() {
                       ⚡ {r.trigger_code}
                     </span>
                   )}
+                  {r.presence_seconds > 0 && (
+                    <span className="flex items-center gap-1 text-[11px] text-ink-mute">
+                      <Clock size={10} /> {r.presence_seconds}s
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   {(r.items || []).map((it, i) => {
@@ -156,9 +208,9 @@ export default function QuickReplies() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={() => setSendingId(sendingId === r.id ? null : r.id)}
+                  onClick={() => openSend(r.id)}
                   className="btn-ghost btn-sm"
-                  title="Send to a number"
+                  title="Send to a contact"
                 >
                   <Send size={12} />
                 </button>
@@ -173,21 +225,67 @@ export default function QuickReplies() {
 
             {/* Quick send panel */}
             {sendingId === r.id && (
-              <div className="px-5 pb-4 flex gap-2 border-t border-ink/10 pt-3">
-                <input
-                  className="input flex-1 text-[13px]"
-                  placeholder="Phone number (e.g. 60123456789)"
-                  value={sendPhone}
-                  onChange={(e) => setSendPhone(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend(r.id)}
-                  autoFocus
-                />
-                <button className="btn btn-sm" onClick={() => handleSend(r.id)}>
-                  <Send size={12} /> Send
-                </button>
-                <button className="btn-ghost btn-sm" onClick={() => setSendingId(null)}>
-                  <X size={12} />
-                </button>
+              <div className="px-5 pb-4 border-t border-ink/10 pt-3">
+                {/* Search bar */}
+                <div className="relative mb-2">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
+                  <input
+                    className="input pl-8 text-[13px] w-full"
+                    placeholder="Search recent chats…"
+                    value={threadSearch}
+                    onChange={(e) => setThreadSearch(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                {/* Recent contacts list */}
+                {threadsLoading && (
+                  <div className="text-[12px] text-ink-mute py-3 text-center">Loading contacts…</div>
+                )}
+                {!threadsLoading && filteredThreads.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto border border-ink/10 rounded divide-y divide-ink/8 mb-2">
+                    {filteredThreads.map((t) => (
+                      <button
+                        key={t.phone}
+                        onClick={() => handleSend(r.id, t.phone)}
+                        className="w-full flex items-center gap-3 px-3 py-2 hover:bg-ink/5 text-left transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-ink/10 flex items-center justify-center shrink-0">
+                          <User size={13} className="text-ink-mute" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] font-medium text-ink truncate">
+                            {t.name || formatPhone(t.phone)}
+                          </div>
+                          {t.name && (
+                            <div className="text-[11px] text-ink-mute">{formatPhone(t.phone)}</div>
+                          )}
+                        </div>
+                        <Send size={11} className="text-ink-faint shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!threadsLoading && filteredThreads.length === 0 && threadSearch && (
+                  <div className="text-[12px] text-ink-mute py-2 text-center">No matches</div>
+                )}
+
+                {/* Manual fallback */}
+                <div className="flex gap-2">
+                  <input
+                    className="input flex-1 text-[13px]"
+                    placeholder="Or type a number (e.g. 60123456789)"
+                    value={sendPhone}
+                    onChange={(e) => setSendPhone(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSend(r.id)}
+                  />
+                  <button className="btn btn-sm" onClick={() => handleSend(r.id)}>
+                    <Send size={12} /> Send
+                  </button>
+                  <button className="btn-ghost btn-sm" onClick={() => setSendingId(null)}>
+                    <X size={12} />
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -230,11 +328,36 @@ export default function QuickReplies() {
                 </div>
               </div>
 
+              {/* Presence animation */}
+              <div>
+                <label className="eyebrow-ink mb-1.5 block flex items-center gap-1.5">
+                  <Clock size={11} /> Typing / recording animation
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="60"
+                    className="input num w-24"
+                    placeholder="0"
+                    value={editing.presence_seconds}
+                    onChange={(e) => setEditing({ ...editing, presence_seconds: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
+                  />
+                  <span className="text-[13px] text-ink-mute">seconds</span>
+                </div>
+                <p className="text-[11px] text-ink-mute mt-1">
+                  Shows "typing…" or "recording…" before sending. 0 = disabled.
+                  First item is voice note → shows recording, otherwise typing.
+                </p>
+              </div>
+
               {/* Items */}
               <div>
                 <div className="flex items-baseline justify-between mb-2">
-                  <label className="eyebrow-ink">Items <span className="text-ink-faint font-normal">(sent in order)</span></label>
-                  <button onClick={addItem} className="btn-ghost btn-sm"><Plus size={11} /> add</button>
+                  <label className="eyebrow-ink">
+                    Items <span className="text-ink-faint font-normal">(sent in order)</span>
+                  </label>
+                  <button onClick={addItem} className="btn-ghost btn-sm"><Plus size={11} /> Add item</button>
                 </div>
                 <div className="space-y-3">
                   {editing.items.map((item, idx) => {
@@ -243,34 +366,45 @@ export default function QuickReplies() {
                       <div key={idx} className="border border-ink/15 bg-paper-50">
                         {/* Item toolbar */}
                         <div className="flex items-center gap-2 px-3 py-2 border-b border-ink/10 bg-paper-100">
-                          <GripVertical size={13} className="text-ink-faint" />
-                          {/* Type selector */}
-                          <div className="flex items-center gap-1 flex-1 flex-wrap">
-                            {ITEM_TYPES.map((t) => (
-                              <button
-                                key={t.value}
-                                onClick={() => setItem(idx, { type: t.value, content: '', url: '' })}
-                                className={clsx(
-                                  'flex items-center gap-1 px-2 py-0.5 text-[10.5px] border transition-colors',
-                                  item.type === t.value
-                                    ? 'bg-ink text-paper-50 border-ink'
-                                    : 'border-ink/15 text-ink-soft hover:bg-ink/5'
-                                )}
-                              >
-                                <t.icon size={10} />
-                                {t.label}
-                              </button>
-                            ))}
+                          <GripVertical size={13} className="text-ink-faint shrink-0" />
+
+                          {/* Type dropdown */}
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <T.icon size={13} className={T.color} />
+                            <select
+                              className="input py-0.5 text-[12px] flex-1"
+                              value={item.type}
+                              onChange={(e) => setItem(idx, { type: e.target.value, content: '', url: '' })}
+                            >
+                              {ITEM_TYPES.map((t) => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                              ))}
+                            </select>
                           </div>
+
                           {/* Move up/down + delete */}
                           <div className="flex items-center gap-1 shrink-0">
-                            <button onClick={() => moveItem(idx, -1)} disabled={idx === 0} className="btn-ghost btn-sm p-0.5 disabled:opacity-30">
+                            <button
+                              onClick={() => moveItem(idx, -1)}
+                              disabled={idx === 0}
+                              className="btn-ghost btn-sm p-0.5 disabled:opacity-30"
+                              title="Move up"
+                            >
                               <ChevronUp size={12} />
                             </button>
-                            <button onClick={() => moveItem(idx, 1)} disabled={idx === editing.items.length - 1} className="btn-ghost btn-sm p-0.5 disabled:opacity-30">
+                            <button
+                              onClick={() => moveItem(idx, 1)}
+                              disabled={idx === editing.items.length - 1}
+                              className="btn-ghost btn-sm p-0.5 disabled:opacity-30"
+                              title="Move down"
+                            >
                               <ChevronDown size={12} />
                             </button>
-                            <button onClick={() => removeItem(idx)} className="btn-ghost btn-sm p-0.5 text-stamp-vermillion hover:bg-stamp-vermillion/10">
+                            <button
+                              onClick={() => removeItem(idx)}
+                              className="btn-ghost btn-sm p-0.5 text-stamp-vermillion hover:bg-stamp-vermillion/10"
+                              title="Remove"
+                            >
                               <X size={12} />
                             </button>
                           </div>
@@ -297,6 +431,9 @@ export default function QuickReplies() {
                     );
                   })}
                 </div>
+                <button onClick={addItem} className="btn-ghost btn-sm mt-2 w-full justify-center border border-dashed border-ink/20">
+                  <Plus size={12} /> Add another item
+                </button>
               </div>
             </div>
 
