@@ -67,11 +67,16 @@ function Shell() {
   const isPWA = useIsPWA();
 
   return (
-    <div className={`h-full flex ${isPWA ? 'flex-col' : ''}`}>
-      {/* Sidebar — desktop only, hidden when installed as PWA */}
-      {!isPWA && <Sidebar />}
+    <div className="h-full flex">
+      {/* Sidebar — md+ screens only, never in PWA */}
+      {!isPWA && (
+        <div className="hidden md:block">
+          <Sidebar />
+        </div>
+      )}
 
-      <main className={`flex-1 overflow-auto relative ${isPWA ? 'pb-16' : ''}`}>
+      {/* Main — bottom padding on mobile/PWA to clear the bottom nav */}
+      <main className="flex-1 overflow-auto relative pb-16 md:pb-0">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/connect" element={<Connect />} />
@@ -89,8 +94,10 @@ function Shell() {
         </Routes>
       </main>
 
-      {/* Bottom nav — PWA only */}
-      {isPWA && <BottomNav />}
+      {/* Bottom nav — always on mobile, always in PWA, hidden md+ in browser */}
+      <div className={isPWA ? '' : 'md:hidden'}>
+        <BottomNav />
+      </div>
     </div>
   );
 }
