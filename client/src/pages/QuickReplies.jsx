@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Plus, Trash2, Edit2, X, Save, Zap, Type, Mic, Image as ImageIcon,
   Video, FileText, GripVertical, ChevronDown, ChevronUp, Send, Clock,
-  Search, User,
+  Search, User, Loader2, CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -47,6 +47,9 @@ export default function QuickReplies() {
   const [threads, setThreads] = useState([]);
   const [threadSearch, setThreadSearch] = useState('');
   const [threadsLoading, setThreadsLoading] = useState(false);
+  const [busyPhone, setBusyPhone] = useState(null);   // phone currently being sent to
+  const [donePhone, setDonePhone] = useState(null);   // phone just successfully sent (shows ✓)
+  const doneTimer = useRef(null);
 
   const load = () => api.quickReplies.list().then(setReplies);
 
@@ -66,10 +69,14 @@ export default function QuickReplies() {
   }, [threads.length]);
 
   const openSend = (id) => {
-    setSendingId(sendingId === id ? null : id);
+    const opening = sendingId !== id;
+    setSendingId(opening ? id : null);
     setSendPhone('');
     setThreadSearch('');
-    if (sendingId !== id) loadThreads();
+    setBusyPhone(null);
+    setDonePhone(null);
+    clearTimeout(doneTimer.current);
+    if (opening) loadThreads();
   };
 
   const openNew = () => setEditing({ id: null, name: '', trigger_code: '', presence_seconds: 0, items: [emptyItem()] });
@@ -116,12 +123,22 @@ export default function QuickReplies() {
   const handleSend = async (id, phone) => {
     const target = (phone || sendPhone).trim();
     if (!target) { toast.error('Select or enter a phone number'); return; }
+    if (busyPhone) return; // already sending
+    setBusyPhone(target);
+    setDonePhone(null);
+    clearTimeout(doneTimer.current);
     try {
       const r = await api.quickReplies.send(id, target);
-      toast.success(`Sent ${r.sent} item${r.sent === 1 ? '' : 's'}`);
-      setSendingId(null);
-      setSendPhone('');
+      setBusyPhone(null);
+      setDonePhone(target);
+      // Show green ✓ for 1.8 s then close panel
+      doneTimer.current = setTimeout(() => {
+        setDonePhone(null);
+        setSendingId(null);
+        setSendPhone('');
+      }, 1800);
     } catch (err) {
+      setBusyPhone(null);
       toast.error(err.message);
     }
   };
@@ -146,7 +163,7 @@ export default function QuickReplies() {
     });
   };
 
-  // Filter threads by search
+  // Filter threads by search — no cap, all contacts scrollable
   const filteredThreads = threads.filter((t) => {
     if (!threadSearch.trim()) return true;
     const q = threadSearch.toLowerCase();
@@ -154,7 +171,7 @@ export default function QuickReplies() {
       threadName(t).toLowerCase().includes(q) ||
       threadPhone(t).includes(q)
     );
-  }).slice(0, 20);
+  });
 
   return (
     <div className="min-h-full bg-paper-50">
@@ -251,26 +268,49 @@ export default function QuickReplies() {
                   <div className="text-[12px] text-ink-mute py-3 text-center">Loading contacts…</div>
                 )}
                 {!threadsLoading && filteredThreads.length > 0 && (
-                  <div className="max-h-48 overflow-y-auto border border-ink/10 rounded divide-y divide-ink/8 mb-2">
+                  <div className="max-h-72 overflow-y-auto border border-ink/10 rounded divide-y divide-ink/8 mb-2">
                     {filteredThreads.map((t) => {
                       const name = threadName(t);
                       const phone = threadPhone(t);
+                      const isBusy = busyPhone === t.phone;
+                      const isDone = donePhone === t.phone;
                       return (
                         <button
                           key={t.phone}
                           onClick={() => handleSend(r.id, t.phone)}
-                          className="w-full flex items-center gap-3 px-3 py-2 hover:bg-ink/5 text-left transition-colors"
+                          disabled={!!busyPhone}
+                          className={clsx(
+                            'w-full flex items-center gap-3 px-3 py-2 text-left transition-colors',
+                            isDone ? 'bg-emerald-50' : isBusy ? 'bg-ink/5' : 'hover:bg-ink/5',
+                            busyPhone && !isBusy && 'opacity-40 cursor-not-allowed',
+                          )}
                         >
-                          <div className="w-7 h-7 rounded-full bg-ink/10 flex items-center justify-center shrink-0">
-                            <User size={13} className="text-ink-mute" />
+                          <div className={clsx(
+                            'w-7 h-7 rounded-full flex items-center justify-center shrink-0',
+                            isDone ? 'bg-emerald-100' : 'bg-ink/10',
+                          )}>
+                            {isDone
+                              ? <CheckCircle2 size={14} className="text-emerald-600" />
+                              : <User size={13} className="text-ink-mute" />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-[13px] font-medium text-ink truncate">{name}</div>
-                            {phone !== name && (
+                            <div className={clsx(
+                              'text-[13px] font-medium truncate',
+                              isDone ? 'text-emerald-700' : 'text-ink',
+                            )}>
+                              {isDone ? `Sent to ${name}` : name}
+                            </div>
+                            {!isDone && phone !== name && (
                               <div className="text-[11px] text-ink-mute">{phone}</div>
                             )}
                           </div>
-                          <Send size={11} className="text-ink-faint shrink-0" />
+                          <div className="shrink-0">
+                            {isBusy
+                              ? <Loader2 size={13} className="text-ink-mute animate-spin" />
+                              : isDone
+                              ? <CheckCircle2 size={13} className="text-emerald-500" />
+                              : <Send size={11} className="text-ink-faint" />}
+                          </div>
                         </button>
                       );
                     })}
@@ -288,11 +328,18 @@ export default function QuickReplies() {
                     value={sendPhone}
                     onChange={(e) => setSendPhone(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend(r.id)}
+                    disabled={!!busyPhone}
                   />
-                  <button className="btn btn-sm" onClick={() => handleSend(r.id)}>
-                    <Send size={12} /> Send
+                  <button
+                    className="btn btn-sm min-w-[72px] justify-center"
+                    onClick={() => handleSend(r.id)}
+                    disabled={!!busyPhone}
+                  >
+                    {busyPhone && busyPhone === sendPhone.trim()
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <><Send size={12} /> Send</>}
                   </button>
-                  <button className="btn-ghost btn-sm" onClick={() => setSendingId(null)}>
+                  <button className="btn-ghost btn-sm" onClick={() => setSendingId(null)} disabled={!!busyPhone}>
                     <X size={12} />
                   </button>
                 </div>
