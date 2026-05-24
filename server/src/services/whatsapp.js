@@ -155,9 +155,10 @@ export async function initWhatsApp() {
       const isGroup = typeof phone === 'string' && phone.endsWith('@g.us');
       let authorJid = null;
       let authorName = '';
+      let contactPushName = rawPush; // for 1:1: use sender's name; overridden below for groups
       if (isGroup) {
         authorJid = msg.author || msg._data?.author || null;
-        // Prefer the pushname from the event (most reliable), fall back to resolveContact
+        // rawPush is the SENDER's name — use it for author_name in the message record
         authorName = rawPush;
         if (authorJid && !authorName) {
           try {
@@ -165,6 +166,11 @@ export async function initWhatsApp() {
             authorName = c?.pushname || c?.name || c?.verifiedName || '';
           } catch {}
         }
+        // For the CONTACT record we want the GROUP name, not the sender's name
+        try {
+          const chat = await msg.getChat();
+          contactPushName = chat.name || '';
+        } catch {}
       }
 
       // Download media to disk if present
@@ -204,10 +210,13 @@ export async function initWhatsApp() {
       );
 
       // upsert contact + try to resolve real identity (@lid → real number)
+      // Groups don't have a real phone number to resolve — use group name directly.
       const digitsOnly = String(phone).replace(/[^\d]/g, '');
       const existing = db.prepare('SELECT id, push_name, resolved_number FROM contacts WHERE phone = ?').get(digitsOnly);
-      const needsResolve = !existing?.resolved_number || !existing?.push_name;
-      const resolved = needsResolve ? await resolveContact(client, phone, rawPush) : { push_name: rawPush, resolved_number: null };
+      const needsResolve = !isGroup && (!existing?.resolved_number || !existing?.push_name);
+      const resolved = needsResolve
+        ? await resolveContact(client, phone, contactPushName)
+        : { push_name: contactPushName, resolved_number: null };
 
       if (existing) {
         db.prepare(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Search, Info, CheckCheck, RefreshCw, FileText, Image as ImageIcon, Video, Music, Zap, X } from 'lucide-react';
+import { Send, Search, Info, CheckCheck, RefreshCw, FileText, Image as ImageIcon, Video, Music, Zap, X, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api.js';
 import { socket } from '../lib/socket.js';
@@ -70,11 +70,9 @@ function displayName(thread) {
 }
 
 function displaySub(thread) {
-  // Under the display name, show the real phone when we have it.
-  // Otherwise show an indicator that this is a privacy-shielded LID.
-  if (thread.resolved_number) return thread.resolved_number;
-  if (thread.phone.endsWith('@lid')) return 'Hidden number (LID)';
   if (thread.phone.endsWith('@g.us')) return 'Group chat';
+  if (thread.resolved_number) return thread.resolved_number;
+  if (thread.phone.endsWith('@lid')) return 'Hidden number';
   return thread.phone;
 }
 
@@ -93,6 +91,10 @@ function initials(str) {
     .slice(0, 2)
     .join('')
     .toUpperCase();
+}
+
+function isGroup(thread) {
+  return typeof thread.phone === 'string' && thread.phone.endsWith('@g.us');
 }
 
 export default function Inbox() {
@@ -217,11 +219,16 @@ export default function Inbox() {
                     isActive ? 'bg-brand-50/60' : ''
                   }`}
                 >
-                  <span
-                    className={`w-10 h-10 rounded-full grid place-items-center font-semibold text-sm shrink-0 ${avatarClass(t.phone)}`}
-                  >
-                    {initials(name)}
-                  </span>
+                  {/* Avatar — group gets a special icon */}
+                  {isGroup(t) ? (
+                    <span className={`w-10 h-10 rounded-full grid place-items-center shrink-0 ${avatarClass(t.phone)}`}>
+                      <Users size={17} />
+                    </span>
+                  ) : (
+                    <span className={`w-10 h-10 rounded-full grid place-items-center font-semibold text-sm shrink-0 ${avatarClass(t.phone)}`}>
+                      {initials(name)}
+                    </span>
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium text-slate-800 text-sm truncate">{name}</div>
@@ -231,7 +238,11 @@ export default function Inbox() {
                       <div className="text-xs text-slate-500 truncate flex items-center gap-1">
                         {t.last_direction === 'out' && <CheckCheck size={11} className="text-slate-400 shrink-0" />}
                         <span className="truncate">
-                          {t.last_body || mediaPreview(t) || '(no message)'}
+                          {/* In groups show "Sender: message" */}
+                          {isGroup(t) && t.last_direction === 'in' && t.last_author_name
+                            ? <><span className="font-medium text-slate-600">{t.last_author_name.split(' ')[0]}:</span> {t.last_body || mediaPreview(t)}</>
+                            : t.last_body || mediaPreview(t) || '(no message)'
+                          }
                         </span>
                       </div>
                       {t.unread > 0 && (

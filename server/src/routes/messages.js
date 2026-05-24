@@ -16,9 +16,10 @@ router.get('/threads', (req, res) => {
     .prepare(
       `SELECT m.phone,
               MAX(m.created_at) AS last_at,
-              (SELECT body FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_body,
-              (SELECT direction FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_direction,
+              (SELECT body       FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_body,
+              (SELECT direction  FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_direction,
               (SELECT media_type FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_media_type,
+              (SELECT author_name FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_author_name,
               (SELECT COUNT(*) FROM messages WHERE phone = m.phone AND direction='in' AND COALESCE(read,0) = 0) AS unread,
               c.name AS contact_name,
               c.push_name AS push_name,
