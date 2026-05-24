@@ -2,95 +2,112 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Plus, Trash2, Edit2, X, Save, Zap, Type, Mic, Image as ImageIcon,
   Video, FileText, GripVertical, ChevronDown, ChevronUp, Send, Clock,
-  Search, User, Loader2, CheckCircle2,
+  Search, Loader2, CheckCircle2, Settings, ChevronRight, ArrowLeft,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { api } from '../lib/api.js';
 import MediaField from '../components/MediaField.jsx';
 
+/* ─── constants ─────────────────────────────────────────────────────────── */
 const ITEM_TYPES = [
   { value: 'text',     label: 'Text',       icon: Type,      color: 'text-ink' },
-  { value: 'audio',    label: 'Voice Note', icon: Mic,       color: 'text-brand-600' },
+  { value: 'audio',    label: 'Voice Note', icon: Mic,       color: 'text-emerald-600' },
   { value: 'image',    label: 'Image',      icon: ImageIcon, color: 'text-sky-600' },
   { value: 'video',    label: 'Video',      icon: Video,     color: 'text-purple-600' },
   { value: 'document', label: 'Document',   icon: FileText,  color: 'text-amber-600' },
 ];
-
 const typeFor = (v) => ITEM_TYPES.find((t) => t.value === v) || ITEM_TYPES[0];
-
 const mediaNodeType = { audio: 'sendAudio', image: 'sendImage', video: 'sendVideo', document: 'sendDocument' };
+const emptyItem = () => ({ type: 'text', content: '', url: '' });
 
-function emptyItem() {
-  return { type: 'text', content: '', url: '' };
-}
-
-// Best display name for a thread object (same priority as Inbox)
+/* ─── thread helpers ─────────────────────────────────────────────────────── */
 function threadName(t) {
-  return t.push_name || t.contact_name || t.resolved_number ||
-    (t.phone?.endsWith('@lid') ? 'Unknown contact' : (t.phone || '').replace(/@.*/, ''));
+  return (
+    t.push_name || t.contact_name || t.resolved_number ||
+    (t.phone?.endsWith('@lid') ? 'Unknown contact' : (t.phone || '').replace(/@.*/, ''))
+  );
 }
-
-// Best phone display for a thread (never show raw @lid)
 function threadPhone(t) {
   if (t.resolved_number) return t.resolved_number;
   if (t.phone?.endsWith('@lid')) return 'Hidden number';
   if (t.phone?.endsWith('@g.us')) return 'Group';
   return (t.phone || '').replace(/@.*/, '');
 }
+function initials(str) {
+  return (str || '?').split(/[\s_-]+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+}
 
+/* ─── main component ─────────────────────────────────────────────────────── */
 export default function QuickReplies() {
-  const [replies, setReplies] = useState([]);
-  const [editing, setEditing] = useState(null);
-  const [sendingId, setSendingId] = useState(null);
-  const [sendPhone, setSendPhone] = useState('');
-  const [threads, setThreads] = useState([]);
+  const [replies, setReplies]           = useState([]);
+  const [mode, setMode]                 = useState('send');   // 'send' | 'manage'
+  const [sheetQR, setSheetQR]           = useState(null);     // QR shown in bottom sheet
+  const [editing, setEditing]           = useState(null);
+  const [faqSearch, setFaqSearch]       = useState('');
+  const [threads, setThreads]           = useState([]);
   const [threadSearch, setThreadSearch] = useState('');
   const [threadsLoading, setThreadsLoading] = useState(false);
-  const [busyPhone, setBusyPhone] = useState(null);   // phone currently being sent to
-  const [donePhone, setDonePhone] = useState(null);   // phone just successfully sent (shows ✓)
+  const [busyPhone, setBusyPhone]       = useState(null);
+  const [donePhone, setDonePhone]       = useState(null);
+  const [sendPhone, setSendPhone]       = useState('');
   const doneTimer = useRef(null);
 
   const load = () => api.quickReplies.list().then(setReplies);
-
   useEffect(() => { load(); }, []);
 
   const loadThreads = useCallback(async () => {
-    if (threads.length > 0) return; // already loaded
+    if (threads.length > 0) return;
     setThreadsLoading(true);
     try {
       const data = await api.messages.threads();
       setThreads(Array.isArray(data) ? data : []);
-    } catch {
-      setThreads([]);
-    } finally {
-      setThreadsLoading(false);
-    }
+    } catch { setThreads([]); }
+    finally { setThreadsLoading(false); }
   }, [threads.length]);
 
-  const openSend = (id) => {
-    const opening = sendingId !== id;
-    setSendingId(opening ? id : null);
-    setSendPhone('');
+  /* send ------------------------------------------------------------------ */
+  const openSheet = (qr) => {
+    setSheetQR(qr);
     setThreadSearch('');
     setBusyPhone(null);
     setDonePhone(null);
+    setSendPhone('');
     clearTimeout(doneTimer.current);
-    if (opening) loadThreads();
+    loadThreads();
+  };
+  const closeSheet = () => { if (!busyPhone) { setSheetQR(null); clearTimeout(doneTimer.current); } };
+
+  const handleSend = async (qrId, phone) => {
+    const target = (phone || sendPhone).trim();
+    if (!target) { toast.error('Pick a contact'); return; }
+    if (busyPhone) return;
+    setBusyPhone(target);
+    setDonePhone(null);
+    clearTimeout(doneTimer.current);
+    try {
+      await api.quickReplies.send(qrId, target);
+      setBusyPhone(null);
+      setDonePhone(target);
+      doneTimer.current = setTimeout(() => {
+        setDonePhone(null);
+        setSheetQR(null);
+        setSendPhone('');
+      }, 1800);
+    } catch (err) {
+      setBusyPhone(null);
+      toast.error(err.message);
+    }
   };
 
-  const openNew = () => setEditing({ id: null, name: '', trigger_code: '', presence_seconds: 0, items: [emptyItem()] });
-  const openEdit = (r) => setEditing({
-    ...r,
-    trigger_code: r.trigger_code || '',
-    presence_seconds: r.presence_seconds || 0,
-    items: r.items?.length ? r.items : [emptyItem()],
-  });
+  /* edit ------------------------------------------------------------------ */
+  const openNew  = () => setEditing({ id: null, name: '', trigger_code: '', presence_seconds: 0, items: [emptyItem()] });
+  const openEdit = (r) => setEditing({ ...r, trigger_code: r.trigger_code || '', presence_seconds: r.presence_seconds || 0, items: r.items?.length ? r.items : [emptyItem()] });
   const closeEdit = () => setEditing(null);
 
   const save = async () => {
     const { id, name, trigger_code, presence_seconds, items } = editing;
-    if (!name.trim()) { toast.error('Name is required'); return; }
+    if (!name.trim()) { toast.error('Name required'); return; }
     const validItems = items.filter((it) => it.type === 'text' ? it.content?.trim() : it.url?.trim());
     if (!validItems.length) { toast.error('Add at least one item with content'); return; }
     try {
@@ -100,113 +117,182 @@ export default function QuickReplies() {
         presence_seconds: Number(presence_seconds) || 0,
         items: validItems.map((it, i) => ({ ...it, sort_order: i })),
       };
-      if (id) {
-        await api.quickReplies.update(id, payload);
-        toast.success('Quick reply updated');
-      } else {
-        await api.quickReplies.create(payload);
-        toast.success('Quick reply created');
-      }
-      closeEdit();
-      load();
-    } catch (err) {
-      toast.error(err.message);
-    }
+      if (id) await api.quickReplies.update(id, payload);
+      else await api.quickReplies.create(payload);
+      toast.success(id ? 'Updated' : 'Created');
+      closeEdit(); load();
+    } catch (err) { toast.error(err.message); }
   };
 
   const remove = async (id) => {
     if (!confirm('Delete this quick reply?')) return;
-    await api.quickReplies.remove(id);
-    load();
+    await api.quickReplies.remove(id); load();
   };
 
-  const handleSend = async (id, phone) => {
-    const target = (phone || sendPhone).trim();
-    if (!target) { toast.error('Select or enter a phone number'); return; }
-    if (busyPhone) return; // already sending
-    setBusyPhone(target);
-    setDonePhone(null);
-    clearTimeout(doneTimer.current);
-    try {
-      const r = await api.quickReplies.send(id, target);
-      setBusyPhone(null);
-      setDonePhone(target);
-      // Show green ✓ for 1.8 s then close panel
-      doneTimer.current = setTimeout(() => {
-        setDonePhone(null);
-        setSendingId(null);
-        setSendPhone('');
-      }, 1800);
-    } catch (err) {
-      setBusyPhone(null);
-      toast.error(err.message);
-    }
-  };
+  const setItem    = (idx, patch) => setEditing((p) => { const items = p.items.slice(); items[idx] = { ...items[idx], ...patch }; return { ...p, items }; });
+  const addItem    = () => setEditing((p) => ({ ...p, items: [...p.items, emptyItem()] }));
+  const removeItem = (idx) => setEditing((p) => ({ ...p, items: p.items.filter((_, i) => i !== idx) }));
+  const moveItem   = (idx, dir) => setEditing((p) => {
+    const items = p.items.slice(); const to = idx + dir;
+    if (to < 0 || to >= items.length) return p;
+    [items[idx], items[to]] = [items[to], items[idx]];
+    return { ...p, items };
+  });
 
-  // Item editor helpers
-  const setItem = (idx, patch) => {
-    setEditing((prev) => {
-      const items = prev.items.slice();
-      items[idx] = { ...items[idx], ...patch };
-      return { ...prev, items };
-    });
-  };
-  const addItem = () => setEditing((prev) => ({ ...prev, items: [...prev.items, emptyItem()] }));
-  const removeItem = (idx) => setEditing((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
-  const moveItem = (idx, dir) => {
-    setEditing((prev) => {
-      const items = prev.items.slice();
-      const to = idx + dir;
-      if (to < 0 || to >= items.length) return prev;
-      [items[idx], items[to]] = [items[to], items[idx]];
-      return { ...prev, items };
-    });
-  };
-
-  // Filter threads by search — no cap, all contacts scrollable
   const filteredThreads = threads.filter((t) => {
     if (!threadSearch.trim()) return true;
     const q = threadSearch.toLowerCase();
-    return (
-      threadName(t).toLowerCase().includes(q) ||
-      threadPhone(t).includes(q)
-    );
+    return threadName(t).toLowerCase().includes(q) || threadPhone(t).includes(q);
   });
 
+  const filteredReplies = replies.filter((r) => {
+    if (!faqSearch.trim()) return true;
+    const q = faqSearch.toLowerCase();
+    return r.name.toLowerCase().includes(q) || (r.trigger_code || '').includes(q);
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     SEND MODE — mobile-first big buttons
+  ══════════════════════════════════════════════════════════════════════════ */
+  if (mode === 'send') {
+    return (
+      <div className="min-h-full flex flex-col" style={{ background: '#f0f2f5' }}>
+        {/* Header — WA green */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between" style={{ background: '#075e54' }}>
+          <div>
+            <div className="font-bold text-[17px] text-white">Quick Send</div>
+            <div className="text-[12px] text-white/60">{replies.length} FAQ{replies.length !== 1 ? 's' : ''} ready</div>
+          </div>
+          <button
+            onClick={() => setMode('manage')}
+            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            title="Manage FAQs"
+          >
+            <Settings size={21} className="text-white" />
+          </button>
+        </div>
+
+        {/* Search bar */}
+        <div className="px-3 pt-3 pb-1">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              className="w-full bg-white rounded-full pl-9 pr-4 py-2.5 text-[14px] shadow-sm focus:outline-none"
+              placeholder="Search FAQs…"
+              value={faqSearch}
+              onChange={(e) => setFaqSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* FAQ list */}
+        <div className="flex-1 p-3 space-y-2">
+          {filteredReplies.length === 0 && replies.length === 0 && (
+            <div className="bg-white rounded-2xl p-10 text-center mt-6 shadow-sm">
+              <Zap size={40} className="mx-auto mb-3" style={{ color: '#075e54' }} />
+              <div className="font-semibold text-gray-700 mb-1">No FAQs yet</div>
+              <div className="text-gray-400 text-sm mb-5">Create your first quick reply</div>
+              <button
+                onClick={() => setMode('manage')}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-medium"
+                style={{ background: '#075e54' }}
+              >
+                <Plus size={15} /> Create FAQ
+              </button>
+            </div>
+          )}
+
+          {filteredReplies.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => openSheet(r)}
+              className="w-full bg-white rounded-2xl px-4 py-4 flex items-center gap-3.5 text-left shadow-sm active:scale-[0.985] transition-transform"
+            >
+              {/* Trigger badge / icon */}
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold text-[16px]"
+                style={{ background: '#e9f5f1', color: '#075e54' }}
+              >
+                {r.trigger_code || <Zap size={20} style={{ color: '#075e54' }} />}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-800 text-[15px] truncate">{r.name}</div>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  {(r.items || []).map((it, i) => {
+                    const T = typeFor(it.type);
+                    return (
+                      <span key={i} className={clsx('flex items-center gap-0.5 text-[12px]', T.color)}>
+                        <T.icon size={11} />
+                        <span className="text-gray-400">{T.label}</span>
+                      </span>
+                    );
+                  })}
+                  {r.presence_seconds > 0 && (
+                    <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                      <Clock size={10} /> {r.presence_seconds}s
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <ChevronRight size={20} className="text-gray-300 shrink-0" />
+            </button>
+          ))}
+        </div>
+
+        {/* Contact bottom sheet */}
+        {sheetQR && (
+          <ContactSheet
+            qr={sheetQR}
+            threads={filteredThreads}
+            threadsLoading={threadsLoading}
+            threadSearch={threadSearch}
+            onSearchChange={setThreadSearch}
+            sendPhone={sendPhone}
+            onPhoneChange={setSendPhone}
+            busyPhone={busyPhone}
+            donePhone={donePhone}
+            onSend={handleSend}
+            onClose={closeSheet}
+          />
+        )}
+      </div>
+    );
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     MANAGE MODE — create / edit / delete
+  ══════════════════════════════════════════════════════════════════════════ */
   return (
     <div className="min-h-full bg-paper-50">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-paper-50 border-b border-ink/10 px-6 py-4 flex items-center justify-between">
-        <div>
-          <div className="eyebrow mb-0.5">Quick Replies</div>
-          <h1 className="font-display text-2xl tracking-tightest leading-none">FAQ Library</h1>
-        </div>
+      <div className="sticky top-0 z-10 bg-paper-50 border-b border-ink/10 px-4 py-3 flex items-center gap-3">
+        <button onClick={() => { setMode('send'); closeEdit(); }} className="btn-ghost btn-sm p-1.5">
+          <ArrowLeft size={16} />
+        </button>
+        <h1 className="font-display text-xl tracking-tightest flex-1">Manage FAQs</h1>
         <button onClick={openNew} className="btn btn-sm">
-          <Plus size={13} /> New reply
+          <Plus size={13} /> New
         </button>
       </div>
 
-      <div className="px-6 py-6 max-w-2xl mx-auto space-y-3">
+      <div className="px-4 py-4 max-w-2xl mx-auto space-y-3">
         {replies.length === 0 && !editing && (
-          <div className="surface px-8 py-16 text-center">
+          <div className="surface px-8 py-14 text-center">
             <Zap size={32} className="mx-auto text-ink-faint mb-3" />
-            <div className="font-display text-2xl tracking-tightest text-ink-mute mb-1">No quick replies yet</div>
-            <div className="text-[12.5px] text-ink-mute mb-4">
-              Create bundles of voice notes, images and text for your FAQs.
-            </div>
-            <button onClick={openNew} className="btn btn-sm">
-              <Plus size={13} /> Create first reply
-            </button>
+            <div className="text-ink-mute mb-4">No quick replies yet</div>
+            <button onClick={openNew} className="btn btn-sm"><Plus size={13} /> Create one</button>
           </div>
         )}
 
         {replies.map((r) => (
           <div key={r.id} className="surface">
-            {/* Card header */}
-            <div className="px-5 py-4 flex items-start gap-3">
+            <div className="px-4 py-3 flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-display text-[18px] tracking-tight2 text-ink">{r.name}</span>
+                  <span className="font-semibold text-ink">{r.name}</span>
                   {r.trigger_code && (
                     <span className="num text-[11px] bg-ink text-paper-50 px-2 py-0.5 rounded-sm">
                       ⚡ {r.trigger_code}
@@ -218,13 +304,12 @@ export default function QuickReplies() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {(r.items || []).map((it, i) => {
                     const T = typeFor(it.type);
                     return (
-                      <span key={i} className={clsx('flex items-center gap-1 text-[11px]', T.color)}>
-                        <T.icon size={11} />
-                        <span className="text-ink-mute">{T.label}</span>
+                      <span key={i} className={clsx('flex items-center gap-0.5 text-[11px]', T.color)}>
+                        <T.icon size={10} /> <span className="text-ink-mute">{T.label}</span>
                       </span>
                     );
                   })}
@@ -232,188 +317,56 @@ export default function QuickReplies() {
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => openSend(r.id)}
-                  className="btn-ghost btn-sm"
-                  title="Send to a contact"
-                >
-                  <Send size={12} />
-                </button>
-                <button onClick={() => openEdit(r)} className="btn-ghost btn-sm" title="Edit">
-                  <Edit2 size={12} />
-                </button>
-                <button onClick={() => remove(r.id)} className="btn-ghost btn-sm text-stamp-vermillion hover:bg-stamp-vermillion/10" title="Delete">
-                  <Trash2 size={12} />
-                </button>
+                <button onClick={() => openEdit(r)} className="btn-ghost btn-sm"><Edit2 size={13} /></button>
+                <button onClick={() => remove(r.id)} className="btn-ghost btn-sm text-stamp-vermillion hover:bg-stamp-vermillion/10"><Trash2 size={13} /></button>
               </div>
             </div>
-
-            {/* Quick send panel */}
-            {sendingId === r.id && (
-              <div className="px-5 pb-4 border-t border-ink/10 pt-3">
-                {/* Search bar */}
-                <div className="relative mb-2">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
-                  <input
-                    className="input pl-8 text-[13px] w-full"
-                    placeholder="Search recent chats…"
-                    value={threadSearch}
-                    onChange={(e) => setThreadSearch(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-
-                {/* Recent contacts list */}
-                {threadsLoading && (
-                  <div className="text-[12px] text-ink-mute py-3 text-center">Loading contacts…</div>
-                )}
-                {!threadsLoading && filteredThreads.length > 0 && (
-                  <div className="max-h-72 overflow-y-auto border border-ink/10 rounded divide-y divide-ink/8 mb-2">
-                    {filteredThreads.map((t) => {
-                      const name = threadName(t);
-                      const phone = threadPhone(t);
-                      const isBusy = busyPhone === t.phone;
-                      const isDone = donePhone === t.phone;
-                      return (
-                        <button
-                          key={t.phone}
-                          onClick={() => handleSend(r.id, t.phone)}
-                          disabled={!!busyPhone}
-                          className={clsx(
-                            'w-full flex items-center gap-3 px-3 py-2 text-left transition-colors',
-                            isDone ? 'bg-emerald-50' : isBusy ? 'bg-ink/5' : 'hover:bg-ink/5',
-                            busyPhone && !isBusy && 'opacity-40 cursor-not-allowed',
-                          )}
-                        >
-                          <div className={clsx(
-                            'w-7 h-7 rounded-full flex items-center justify-center shrink-0',
-                            isDone ? 'bg-emerald-100' : 'bg-ink/10',
-                          )}>
-                            {isDone
-                              ? <CheckCircle2 size={14} className="text-emerald-600" />
-                              : <User size={13} className="text-ink-mute" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className={clsx(
-                              'text-[13px] font-medium truncate',
-                              isDone ? 'text-emerald-700' : 'text-ink',
-                            )}>
-                              {isDone ? `Sent to ${name}` : name}
-                            </div>
-                            {!isDone && phone !== name && (
-                              <div className="text-[11px] text-ink-mute">{phone}</div>
-                            )}
-                          </div>
-                          <div className="shrink-0">
-                            {isBusy
-                              ? <Loader2 size={13} className="text-ink-mute animate-spin" />
-                              : isDone
-                              ? <CheckCircle2 size={13} className="text-emerald-500" />
-                              : <Send size={11} className="text-ink-faint" />}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {!threadsLoading && filteredThreads.length === 0 && threadSearch && (
-                  <div className="text-[12px] text-ink-mute py-2 text-center">No matches</div>
-                )}
-
-                {/* Manual fallback */}
-                <div className="flex gap-2">
-                  <input
-                    className="input flex-1 text-[13px]"
-                    placeholder="Or type a number (e.g. 60123456789)"
-                    value={sendPhone}
-                    onChange={(e) => setSendPhone(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend(r.id)}
-                    disabled={!!busyPhone}
-                  />
-                  <button
-                    className="btn btn-sm min-w-[72px] justify-center"
-                    onClick={() => handleSend(r.id)}
-                    disabled={!!busyPhone}
-                  >
-                    {busyPhone && busyPhone === sendPhone.trim()
-                      ? <Loader2 size={12} className="animate-spin" />
-                      : <><Send size={12} /> Send</>}
-                  </button>
-                  <button className="btn-ghost btn-sm" onClick={() => setSendingId(null)} disabled={!!busyPhone}>
-                    <X size={12} />
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         ))}
 
-        {/* Editor */}
+        {/* ── Editor ── */}
         {editing && (
           <div className="surface border-2 border-ink/20">
             <div className="px-5 py-4 border-b border-ink/10 flex items-center justify-between">
-              <h2 className="font-display text-xl tracking-tight2">
-                {editing.id ? 'Edit reply' : 'New quick reply'}
-              </h2>
+              <h2 className="font-display text-xl tracking-tight2">{editing.id ? 'Edit reply' : 'New quick reply'}</h2>
               <button onClick={closeEdit} className="btn-ghost btn-sm"><X size={13} /></button>
             </div>
 
             <div className="px-5 py-5 space-y-5">
-              {/* Name + trigger code */}
+              {/* Name + trigger */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="eyebrow-ink mb-1.5 block">Name</label>
-                  <input
-                    className="input"
-                    placeholder="e.g. Fire Risk FAQ"
-                    value={editing.name}
-                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                    autoFocus
-                  />
+                  <input className="input" placeholder="e.g. Fire Risk FAQ" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} autoFocus />
                 </div>
                 <div>
                   <label className="eyebrow-ink mb-1.5 block">Trigger code</label>
-                  <input
-                    className="input num"
-                    placeholder="e.g. 1"
-                    value={editing.trigger_code}
-                    onChange={(e) => setEditing({ ...editing, trigger_code: e.target.value.slice(0, 5) })}
-                  />
-                  <p className="text-[11px] text-ink-mute mt-1">
-                    Type this in WhatsApp → auto-sends. Single digit recommended.
-                  </p>
+                  <input className="input num" placeholder="e.g. 1" value={editing.trigger_code} onChange={(e) => setEditing({ ...editing, trigger_code: e.target.value.slice(0, 5) })} />
+                  <p className="text-[11px] text-ink-mute mt-1">Type this in WhatsApp → auto-sends. Single digit recommended.</p>
                 </div>
               </div>
 
               {/* Presence animation */}
               <div>
-                <label className="eyebrow-ink mb-1.5 block flex items-center gap-1.5">
+                <label className="eyebrow-ink mb-1.5 flex items-center gap-1.5 block">
                   <Clock size={11} /> Typing / recording animation
                 </label>
                 <div className="flex items-center gap-2">
                   <input
-                    type="number"
-                    min="0"
-                    max="60"
-                    className="input num w-24"
-                    placeholder="0"
+                    type="number" min="0" max="60"
+                    className="input num w-24" placeholder="0"
                     value={editing.presence_seconds}
                     onChange={(e) => setEditing({ ...editing, presence_seconds: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
                   />
-                  <span className="text-[13px] text-ink-mute">seconds</span>
+                  <span className="text-[13px] text-ink-mute">seconds (0 = off)</span>
                 </div>
-                <p className="text-[11px] text-ink-mute mt-1">
-                  Shows "typing…" or "recording…" before sending. 0 = disabled.
-                  First item is voice note → shows recording, otherwise typing.
-                </p>
+                <p className="text-[11px] text-ink-mute mt-1">First item is voice note → shows "recording…", otherwise "typing…"</p>
               </div>
 
               {/* Items */}
               <div>
                 <div className="flex items-baseline justify-between mb-2">
-                  <label className="eyebrow-ink">
-                    Items <span className="text-ink-faint font-normal">(sent in order)</span>
-                  </label>
+                  <label className="eyebrow-ink">Items <span className="text-ink-faint font-normal">(sent in order)</span></label>
                   <button onClick={addItem} className="btn-ghost btn-sm"><Plus size={11} /> Add item</button>
                 </div>
                 <div className="space-y-3">
@@ -421,67 +374,25 @@ export default function QuickReplies() {
                     const T = typeFor(item.type);
                     return (
                       <div key={idx} className="border border-ink/15 bg-paper-50">
-                        {/* Item toolbar */}
                         <div className="flex items-center gap-2 px-3 py-2 border-b border-ink/10 bg-paper-100">
                           <GripVertical size={13} className="text-ink-faint shrink-0" />
-
-                          {/* Type dropdown */}
                           <div className="flex items-center gap-1.5 flex-1 min-w-0">
                             <T.icon size={13} className={T.color} />
-                            <select
-                              className="input py-0.5 text-[12px] flex-1"
-                              value={item.type}
-                              onChange={(e) => setItem(idx, { type: e.target.value, content: '', url: '' })}
-                            >
-                              {ITEM_TYPES.map((t) => (
-                                <option key={t.value} value={t.value}>{t.label}</option>
-                              ))}
+                            <select className="input py-0.5 text-[12px] flex-1" value={item.type} onChange={(e) => setItem(idx, { type: e.target.value, content: '', url: '' })}>
+                              {ITEM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
                           </div>
-
-                          {/* Move up/down + delete */}
                           <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              onClick={() => moveItem(idx, -1)}
-                              disabled={idx === 0}
-                              className="btn-ghost btn-sm p-0.5 disabled:opacity-30"
-                              title="Move up"
-                            >
-                              <ChevronUp size={12} />
-                            </button>
-                            <button
-                              onClick={() => moveItem(idx, 1)}
-                              disabled={idx === editing.items.length - 1}
-                              className="btn-ghost btn-sm p-0.5 disabled:opacity-30"
-                              title="Move down"
-                            >
-                              <ChevronDown size={12} />
-                            </button>
-                            <button
-                              onClick={() => removeItem(idx)}
-                              className="btn-ghost btn-sm p-0.5 text-stamp-vermillion hover:bg-stamp-vermillion/10"
-                              title="Remove"
-                            >
-                              <X size={12} />
-                            </button>
+                            <button onClick={() => moveItem(idx, -1)} disabled={idx === 0} className="btn-ghost btn-sm p-0.5 disabled:opacity-30"><ChevronUp size={12} /></button>
+                            <button onClick={() => moveItem(idx, 1)} disabled={idx === editing.items.length - 1} className="btn-ghost btn-sm p-0.5 disabled:opacity-30"><ChevronDown size={12} /></button>
+                            <button onClick={() => removeItem(idx)} className="btn-ghost btn-sm p-0.5 text-stamp-vermillion hover:bg-stamp-vermillion/10"><X size={12} /></button>
                           </div>
                         </div>
-
-                        {/* Item content */}
                         <div className="p-3">
                           {item.type === 'text' ? (
-                            <textarea
-                              className="w-full bg-transparent text-[13.5px] text-ink focus:outline-none min-h-[72px] resize-y"
-                              placeholder="Type your message here…"
-                              value={item.content}
-                              onChange={(e) => setItem(idx, { content: e.target.value })}
-                            />
+                            <textarea className="w-full bg-transparent text-[13.5px] text-ink focus:outline-none min-h-[72px] resize-y" placeholder="Type your message here…" value={item.content} onChange={(e) => setItem(idx, { content: e.target.value })} />
                           ) : (
-                            <MediaField
-                              nodeType={mediaNodeType[item.type] || 'sendMedia'}
-                              value={item.url}
-                              onChange={(url) => setItem(idx, { url })}
-                            />
+                            <MediaField nodeType={mediaNodeType[item.type] || 'sendMedia'} value={item.url} onChange={(url) => setItem(idx, { url })} />
                           )}
                         </div>
                       </div>
@@ -496,12 +407,140 @@ export default function QuickReplies() {
 
             <div className="px-5 py-4 border-t border-ink/10 flex justify-end gap-2">
               <button onClick={closeEdit} className="btn-ghost btn-sm">Cancel</button>
-              <button onClick={save} className="btn btn-sm">
-                <Save size={12} /> Save
-              </button>
+              <button onClick={save} className="btn btn-sm"><Save size={12} /> Save</button>
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Contact bottom sheet ───────────────────────────────────────────────── */
+function ContactSheet({ qr, threads, threadsLoading, threadSearch, onSearchChange, sendPhone, onPhoneChange, busyPhone, donePhone, onSend, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      {/* backdrop */}
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+
+      {/* sheet */}
+      <div className="relative bg-white rounded-t-3xl flex flex-col shadow-2xl" style={{ maxHeight: '82vh' }}>
+        {/* drag handle */}
+        <div className="flex justify-center pt-3 pb-0.5">
+          <div className="w-10 h-1 bg-gray-200 rounded-full" />
+        </div>
+
+        {/* title */}
+        <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100">
+          <div>
+            <div className="font-semibold text-gray-800 text-[16px]">Send to…</div>
+            <div className="text-[12px] text-gray-400 mt-0.5">{qr.name}</div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X size={17} className="text-gray-500" />
+          </button>
+        </div>
+
+        {/* search */}
+        <div className="px-4 py-2.5 border-b border-gray-100">
+          <div className="relative">
+            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              className="w-full bg-gray-100 rounded-full pl-10 pr-4 py-2.5 text-[14px] focus:outline-none"
+              placeholder="Search contacts…"
+              value={threadSearch}
+              onChange={(e) => onSearchChange(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {/* contacts list */}
+        <div className="flex-1 overflow-y-auto">
+          {threadsLoading && (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 size={22} className="animate-spin text-gray-300" />
+            </div>
+          )}
+
+          {!threadsLoading && threads.length === 0 && (
+            <div className="py-10 text-center text-gray-400 text-sm">
+              {threadSearch ? 'No matches' : 'No recent chats'}
+            </div>
+          )}
+
+          {!threadsLoading && threads.map((t) => {
+            const name = threadName(t);
+            const phone = threadPhone(t);
+            const isBusy = busyPhone === t.phone;
+            const isDone = donePhone === t.phone;
+            return (
+              <button
+                key={t.phone}
+                onClick={() => onSend(qr.id, t.phone)}
+                disabled={!!busyPhone}
+                className={clsx(
+                  'w-full flex items-center gap-3.5 px-5 py-3.5 transition-colors text-left',
+                  isDone ? 'bg-emerald-50' : isBusy ? 'bg-gray-50' : 'hover:bg-gray-50 active:bg-gray-100',
+                  busyPhone && !isBusy && 'opacity-35 cursor-default',
+                )}
+              >
+                {/* avatar */}
+                <div
+                  className={clsx(
+                    'w-11 h-11 rounded-full flex items-center justify-center shrink-0 font-semibold text-[15px] transition-colors',
+                    isDone ? 'bg-emerald-100 text-emerald-700' : 'text-white',
+                  )}
+                  style={!isDone ? { background: '#075e54' } : undefined}
+                >
+                  {isDone ? <CheckCircle2 size={22} className="text-emerald-600" /> : initials(name)}
+                </div>
+
+                {/* text */}
+                <div className="flex-1 min-w-0">
+                  <div className={clsx('font-medium text-[15px] truncate', isDone ? 'text-emerald-700' : 'text-gray-800')}>
+                    {isDone ? 'Sent!' : name}
+                  </div>
+                  {!isDone && phone !== name && (
+                    <div className="text-[12px] text-gray-400 truncate">{phone}</div>
+                  )}
+                </div>
+
+                {/* right icon */}
+                <div className="shrink-0">
+                  {isBusy   ? <Loader2 size={20} className="animate-spin text-gray-400" /> :
+                   isDone   ? <CheckCircle2 size={20} className="text-emerald-500" /> :
+                              <Send size={17} className="text-gray-300" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* manual number */}
+        <div className="px-4 py-3 border-t border-gray-100 flex gap-2.5 items-center">
+          <input
+            className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-[14px] focus:outline-none"
+            placeholder="Or type a number (601234…)"
+            value={sendPhone}
+            onChange={(e) => onPhoneChange(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onSend(qr.id)}
+            disabled={!!busyPhone}
+          />
+          <button
+            onClick={() => onSend(qr.id)}
+            disabled={!sendPhone.trim() || !!busyPhone}
+            className="w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-40 shrink-0 transition-opacity"
+            style={{ background: '#075e54' }}
+          >
+            {busyPhone === sendPhone.trim()
+              ? <Loader2 size={18} className="animate-spin text-white" />
+              : <Send size={18} className="text-white" />}
+          </button>
+        </div>
+
+        {/* iOS safe area */}
+        <div className="h-[env(safe-area-inset-bottom,0px)]" />
       </div>
     </div>
   );

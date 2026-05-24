@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar.jsx';
+import BottomNav from './components/BottomNav.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Connect from './pages/Connect.jsx';
 import Flows from './pages/Flows.jsx';
@@ -16,6 +17,15 @@ import Login from './pages/Login.jsx';
 import Forgot from './pages/Forgot.jsx';
 import Reset from './pages/Reset.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
+
+// Detect if running as installed PWA (standalone / fullscreen)
+function useIsPWA() {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: fullscreen)').matches ||
+    window.navigator.standalone === true   // iOS Safari
+  );
+}
 
 export default function App() {
   return (
@@ -54,10 +64,14 @@ function RequireAuth({ children }) {
 }
 
 function Shell() {
+  const isPWA = useIsPWA();
+
   return (
-    <div className="h-full flex">
-      <Sidebar />
-      <main className="flex-1 overflow-auto relative">
+    <div className={`h-full flex ${isPWA ? 'flex-col' : ''}`}>
+      {/* Sidebar — desktop only, hidden when installed as PWA */}
+      {!isPWA && <Sidebar />}
+
+      <main className={`flex-1 overflow-auto relative ${isPWA ? 'pb-16' : ''}`}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/connect" element={<Connect />} />
@@ -74,6 +88,9 @@ function Shell() {
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
+
+      {/* Bottom nav — PWA only */}
+      {isPWA && <BottomNav />}
     </div>
   );
 }
