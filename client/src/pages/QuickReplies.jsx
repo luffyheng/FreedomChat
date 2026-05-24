@@ -25,9 +25,18 @@ function emptyItem() {
   return { type: 'text', content: '', url: '' };
 }
 
-function formatPhone(phone) {
-  // Trim country code prefix for display, keep original for sending
-  return phone?.replace(/^60/, '0') || phone || '';
+// Best display name for a thread object (same priority as Inbox)
+function threadName(t) {
+  return t.push_name || t.contact_name || t.resolved_number ||
+    (t.phone?.endsWith('@lid') ? 'Unknown contact' : (t.phone || '').replace(/@.*/, ''));
+}
+
+// Best phone display for a thread (never show raw @lid)
+function threadPhone(t) {
+  if (t.resolved_number) return t.resolved_number;
+  if (t.phone?.endsWith('@lid')) return 'Hidden number';
+  if (t.phone?.endsWith('@g.us')) return 'Group';
+  return (t.phone || '').replace(/@.*/, '');
 }
 
 export default function QuickReplies() {
@@ -142,9 +151,8 @@ export default function QuickReplies() {
     if (!threadSearch.trim()) return true;
     const q = threadSearch.toLowerCase();
     return (
-      (t.name || '').toLowerCase().includes(q) ||
-      (t.phone || '').includes(q) ||
-      formatPhone(t.phone || '').includes(q)
+      threadName(t).toLowerCase().includes(q) ||
+      threadPhone(t).includes(q)
     );
   }).slice(0, 20);
 
@@ -244,26 +252,28 @@ export default function QuickReplies() {
                 )}
                 {!threadsLoading && filteredThreads.length > 0 && (
                   <div className="max-h-48 overflow-y-auto border border-ink/10 rounded divide-y divide-ink/8 mb-2">
-                    {filteredThreads.map((t) => (
-                      <button
-                        key={t.phone}
-                        onClick={() => handleSend(r.id, t.phone)}
-                        className="w-full flex items-center gap-3 px-3 py-2 hover:bg-ink/5 text-left transition-colors"
-                      >
-                        <div className="w-7 h-7 rounded-full bg-ink/10 flex items-center justify-center shrink-0">
-                          <User size={13} className="text-ink-mute" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[13px] font-medium text-ink truncate">
-                            {t.name || formatPhone(t.phone)}
+                    {filteredThreads.map((t) => {
+                      const name = threadName(t);
+                      const phone = threadPhone(t);
+                      return (
+                        <button
+                          key={t.phone}
+                          onClick={() => handleSend(r.id, t.phone)}
+                          className="w-full flex items-center gap-3 px-3 py-2 hover:bg-ink/5 text-left transition-colors"
+                        >
+                          <div className="w-7 h-7 rounded-full bg-ink/10 flex items-center justify-center shrink-0">
+                            <User size={13} className="text-ink-mute" />
                           </div>
-                          {t.name && (
-                            <div className="text-[11px] text-ink-mute">{formatPhone(t.phone)}</div>
-                          )}
-                        </div>
-                        <Send size={11} className="text-ink-faint shrink-0" />
-                      </button>
-                    ))}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] font-medium text-ink truncate">{name}</div>
+                            {phone !== name && (
+                              <div className="text-[11px] text-ink-mute">{phone}</div>
+                            )}
+                          </div>
+                          <Send size={11} className="text-ink-faint shrink-0" />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
                 {!threadsLoading && filteredThreads.length === 0 && threadSearch && (

@@ -269,7 +269,7 @@ export default function Inbox() {
                 <div className="font-medium text-slate-800 truncate">{displayName(active)}</div>
                 <div className="text-xs text-slate-500 truncate">
                   {displaySub(active)}
-                  {active.resolved_number && (
+                  {active.resolved_number && !active.phone?.endsWith('@lid') && (
                     <span className="ml-2 text-[10px] text-slate-400 font-mono">· {active.phone}</span>
                   )}
                 </div>
