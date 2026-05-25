@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Plus, Upload, Trash2, Users, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { Plus, Upload, Trash2, Users, Clock, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PageHeader from '../components/PageHeader.jsx';
 import ContactPanel from '../components/ContactPanel.jsx';
@@ -8,11 +8,23 @@ import pageCache from '../lib/pageCache.js';
 
 export default function Contacts() {
   const [contacts, setContacts] = useState(pageCache.contacts ?? []);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', phone: '', tags: '' });
   const [openIndex, setOpenIndex] = useState(null);
   const fileRef = useRef(null);
 
-  const openPhone = openIndex !== null ? (contacts[openIndex]?.jid || contacts[openIndex]?.phone) : null;
+  const filtered = useMemo(() => {
+    if (!search.trim()) return contacts;
+    const q = search.toLowerCase();
+    return contacts.filter((c) =>
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.push_name || '').toLowerCase().includes(q) ||
+      (c.phone || '').includes(q) ||
+      (c.tags || '').toLowerCase().includes(q)
+    );
+  }, [contacts, search]);
+
+  const openPhone = openIndex !== null ? (filtered[openIndex]?.jid || filtered[openIndex]?.phone) : null;
 
   const load = () => api.contacts.list().then((data) => { pageCache.contacts = data; setContacts(data); });
   useEffect(() => {
@@ -45,7 +57,7 @@ export default function Contacts() {
     setOpenIndex(null);
   };
 
-  const goNext = () => setOpenIndex((i) => Math.min(contacts.length - 1, i + 1));
+  const goNext = () => setOpenIndex((i) => Math.min(filtered.length - 1, i + 1));
   const goPrev = () => setOpenIndex((i) => Math.max(0, i - 1));
 
   return (
@@ -99,11 +111,25 @@ export default function Contacts() {
         </form>
 
         <div className="card lg:col-span-2 overflow-hidden">
+          {/* Search bar */}
+          <div className="px-4 py-3 border-b border-slate-100">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                className="input pl-8 !py-1.5 text-sm"
+                placeholder="Search name, phone or tags…"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setOpenIndex(null); }}
+              />
+            </div>
+          </div>
           {contacts.length === 0 ? (
             <div className="p-12 text-center text-slate-500">
               <Users size={40} className="mx-auto mb-3 text-slate-300" />
               No contacts yet.
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm">No contacts match "{search}"</div>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
@@ -116,7 +142,7 @@ export default function Contacts() {
                 </tr>
               </thead>
               <tbody>
-                {contacts.map((c, i) => (
+                {filtered.map((c, i) => (
                   <tr
                     key={c.id}
                     className={`border-t border-slate-100 hover:bg-slate-50 cursor-pointer ${openIndex === i ? 'bg-brand-50' : ''}`}
@@ -209,7 +235,7 @@ export default function Contacts() {
               >
                 <ChevronLeft size={15} /> Prev
               </button>
-              <span className="text-slate-500 text-xs">{openIndex + 1} / {contacts.length}</span>
+              <span className="text-slate-500 text-xs">{openIndex + 1} / {filtered.length}</span>
               <button
                 className="flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600"
                 onClick={goNext}

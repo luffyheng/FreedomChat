@@ -232,22 +232,33 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
                     </div>
                     {/* Next pending dispatch */}
                     {sub?.next_dispatch && (status === 'active' || status === 'paused') && (
-                      <div className="mt-2 flex items-center justify-between gap-2 p-2 rounded bg-white border border-slate-200">
-                        <div className="min-w-0">
-                          <div className="text-[10px] text-slate-400">Next up</div>
-                          <div className="text-xs font-medium text-slate-700 truncate">{sub.next_dispatch.queue_name}</div>
-                          <div className={`text-[10px] ${sub.next_dispatch.due_at < Date.now() ? 'text-amber-600' : 'text-slate-400'}`}>
-                            {relativeTime(sub.next_dispatch.due_at)}
+                      <div className="mt-2 p-2 rounded bg-white border border-slate-200">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[10px] text-slate-400">Next up</div>
+                            <div className="text-xs font-medium text-slate-700 truncate">{sub.next_dispatch.queue_name}</div>
+                            <div className={`text-[10px] ${sub.next_dispatch.due_at < Date.now() ? 'text-amber-600' : 'text-slate-400'}`}>
+                              {relativeTime(sub.next_dispatch.due_at)}
+                            </div>
                           </div>
+                          {status === 'active' && (
+                            <button
+                              className="shrink-0 text-[11px] px-2 py-1 rounded bg-brand-600 text-white hover:bg-brand-700 flex items-center gap-1"
+                              onClick={() => sendNow(sub.next_dispatch.id)}
+                              title="Send this step now"
+                            >
+                              <SendHorizonal size={11} /> Send now
+                            </button>
+                          )}
                         </div>
-                        {status === 'active' && (
-                          <button
-                            className="shrink-0 text-[11px] px-2 py-1 rounded bg-brand-600 text-white hover:bg-brand-700 flex items-center gap-1"
-                            onClick={() => sendNow(sub.next_dispatch.id)}
-                            title="Send this step now"
-                          >
-                            <SendHorizonal size={11} /> Send now
-                          </button>
+                        {sub.next_dispatch.preview_text ? (
+                          <div className="mt-1.5 text-[11px] text-slate-500 bg-slate-50 rounded p-1.5 line-clamp-2 whitespace-pre-wrap">
+                            {sub.next_dispatch.preview_text}
+                          </div>
+                        ) : (
+                          <div className="mt-1.5 text-[10px] text-amber-600 italic">
+                            ⚠ Queue step has no message — open Sequences to add content
+                          </div>
                         )}
                       </div>
                     )}

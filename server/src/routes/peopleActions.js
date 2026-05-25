@@ -33,12 +33,21 @@ router.get('/:phone', async (req, res) => {
   const sequences = await Promise.all(
     sequencesRaw.map(async (sub) => {
       const nextDispatch = await db.prepare(
-        `SELECT d.id, d.due_at, q.name as queue_name, q.position
+        `SELECT d.id, d.due_at, q.name as queue_name, q.position, q.graph_json
          FROM sequence_dispatches d
          JOIN sequence_queues q ON q.id = d.queue_id
          WHERE d.subscriber_id = $1 AND d.status = 'pending'
          ORDER BY d.due_at ASC LIMIT 1`
       ).get(sub.subscriber_id);
+      if (nextDispatch) {
+        // Extract preview text from the first sendText node in the flow graph
+        try {
+          const graph = JSON.parse(nextDispatch.graph_json || '{}');
+          const textNode = (graph.nodes || []).find((n) => n.type === 'sendText');
+          nextDispatch.preview_text = textNode?.data?.text || '';
+        } catch { nextDispatch.preview_text = ''; }
+        delete nextDispatch.graph_json; // don't send raw JSON to client
+      }
       return { ...sub, next_dispatch: nextDispatch || null };
     })
   );
