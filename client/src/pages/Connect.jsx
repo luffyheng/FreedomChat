@@ -29,8 +29,16 @@ export default function Connect() {
   };
 
   const logout = async () => {
-    await api.whatsapp.logout();
-    toast('Logged out', { icon: '👋' });
+    try {
+      setLoading(true);
+      await api.whatsapp.logout();
+      setState({ status: 'idle', qr: null });
+      toast('Disconnected', { icon: '👋' });
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

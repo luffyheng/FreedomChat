@@ -41,6 +41,7 @@ let client = null;
 let currentQr = null;
 let status = 'idle';
 let io = null;
+let intentionalLogout = false; // prevents auto-reconnect when user clicks Logout
 
 export function setSocketIO(instance) { io = instance; }
 function emit(event, data) { if (io) io.emit(event, data); }
@@ -109,16 +110,20 @@ export async function initWhatsApp() {
   });
 
   client.on('disconnected', (reason) => {
-    status = 'disconnected';
-    emit('wa:status', { status, reason });
     client = null;
     currentQr = null;
-    if (reason !== 'LOGOUT') {
-      console.log(`[whatsapp] disconnected (${reason}), reconnecting in 15s…`);
-      setTimeout(() => {
-        initWhatsApp().catch((e) => console.error('[whatsapp] reconnect failed:', e));
-      }, 15000);
+    if (intentionalLogout) {
+      // User clicked Logout — stay idle, don't reconnect
+      status = 'idle';
+      emit('wa:status', { status });
+      return;
     }
+    status = 'disconnected';
+    emit('wa:status', { status, reason });
+    console.log(`[whatsapp] disconnected (${reason}), reconnecting in 15s…`);
+    setTimeout(() => {
+      initWhatsApp().catch((e) => console.error('[whatsapp] reconnect failed:', e));
+    }, 15000);
   });
 
   // Track delivery + read acks against broadcast targets
@@ -354,12 +359,16 @@ export async function initWhatsApp() {
 
 export async function logout() {
   if (!client) return;
-  try { await client.logout(); } catch {}
-  try { await client.destroy(); } catch {}
-  client = null;
+  intentionalLogout = true;
+  const c = client;
+  client = null; // clear immediately to stop any in-flight handlers
+  try { await c.logout(); } catch {}
+  try { await c.destroy(); } catch {}
+  intentionalLogout = false;
   status = 'idle';
   currentQr = null;
   emit('wa:status', { status });
+  console.log('[whatsapp] logged out cleanly');
 }
 
 function toJid(phone) {
