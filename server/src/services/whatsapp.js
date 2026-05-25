@@ -90,7 +90,7 @@ export async function initWhatsApp() {
         '--disable-extensions', '--disable-software-rasterizer',
         '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows',
         '--disable-renderer-backgrounding', '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection', '--single-process',
+        '--disable-ipc-flooding-protection',
       ],
     },
   });
