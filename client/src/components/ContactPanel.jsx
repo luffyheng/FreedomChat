@@ -60,6 +60,19 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
   const pushName = info?.contact?.push_name || info?.contact?.name;
   const initials = (pushName || phone).slice(0, 2).toUpperCase();
 
+  // Optimistic helper — instantly update a subscription's status in local state
+  const optimisticSubStatus = (sequenceId, newStatus) => {
+    setInfo((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        sequences: prev.sequences.map((s) =>
+          s.id === sequenceId ? { ...s, status: newStatus } : s
+        ),
+      };
+    });
+  };
+
   const runFlow = async (flowId) => {
     try {
       await api.people.runFlow(phone, flowId);
@@ -70,50 +83,50 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
   };
 
   const subscribe = async (sequenceId) => {
+    optimisticSubStatus(sequenceId, 'active');
+    toast.success('Subscribed');
     try {
       await api.people.subscribe(phone, sequenceId);
-      toast.success('Subscribed to sequence');
-      load();
+      load(); // need fresh next_dispatch after subscribing
     } catch (e) {
       toast.error(e.message);
+      load(); // revert
     }
   };
 
   const unsubscribe = async (sequenceId) => {
-    try {
-      await api.people.unsubscribe(phone, sequenceId);
-      toast('Sequence stopped', { icon: '⏹' });
-      load();
-    } catch (e) {
+    optimisticSubStatus(sequenceId, 'unsubscribed');
+    toast('Sequence stopped', { icon: '⏹' });
+    api.people.unsubscribe(phone, sequenceId).catch((e) => {
       toast.error(e.message);
-    }
+      load(); // revert on failure
+    });
   };
 
   const pauseSeq = async (sequenceId) => {
-    try {
-      await api.people.pauseSequence(phone, sequenceId);
-      toast('Sequence paused', { icon: '⏸' });
-      load();
-    } catch (e) {
+    optimisticSubStatus(sequenceId, 'paused');
+    toast('Paused', { icon: '⏸' });
+    api.people.pauseSequence(phone, sequenceId).catch((e) => {
       toast.error(e.message);
-    }
+      load();
+    });
   };
 
   const resumeSeq = async (sequenceId) => {
-    try {
-      await api.people.resumeSequence(phone, sequenceId);
-      toast.success('Sequence resumed');
-      load();
-    } catch (e) {
+    optimisticSubStatus(sequenceId, 'active');
+    toast.success('Resumed');
+    api.people.resumeSequence(phone, sequenceId).catch((e) => {
       toast.error(e.message);
-    }
+      load();
+    });
   };
 
   const sendNow = async (dispatchId) => {
+    toast.success('Sending…');
     try {
       await api.people.sendDispatch(phone, dispatchId);
       toast.success('Sent!');
-      load();
+      load(); // refresh to show next step
     } catch (e) {
       toast.error(e.message);
     }
