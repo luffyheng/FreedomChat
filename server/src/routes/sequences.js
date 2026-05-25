@@ -62,8 +62,19 @@ router.post('/:id/queues', async (req, res) => {
   await db.prepare(
     'INSERT INTO sequence_queues (id, sequence_id, name, position, delay_ms, graph_json) VALUES ($1,$2,$3,$4,$5,$6)'
   ).run(id, req.params.id, name, (max?.m ?? -1) + 1, delay_ms, JSON.stringify(graph));
+
+  // Backfill: schedule this new step for all existing active/paused subscribers
+  const subs = await db.prepare(
+    "SELECT * FROM sequence_subscribers WHERE sequence_id = $1 AND status IN ('active','paused')"
+  ).all(req.params.id);
+  const now = Date.now();
+  for (const sub of subs) {
+    await db.prepare(
+      'INSERT INTO sequence_dispatches (id, subscriber_id, queue_id, due_at, status) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (subscriber_id, queue_id) DO NOTHING'
+    ).run(nanoid(), sub.id, id, now + (delay_ms || 0), 'pending');
+  }
+
   res.json({ id });
-});
 
 router.put('/queues/:queueId', async (req, res) => {
   const { name, delay_ms, graph, position } = req.body || {};

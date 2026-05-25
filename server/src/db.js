@@ -1,103 +1,139 @@
 /**
- * db.js — PostgreSQL adapter for ChatMamba (replaces node:sqlite)
+ * db.js — Supabase JS client adapter for ChatMamba
  *
- * Uses the `pg` package to connect to Supabase (or any PostgreSQL server).
- * Set DATABASE_URL in .env — find it in Supabase dashboard:
- *   Project Settings → Database → Connection string → URI
- *   Use the "Transaction pooler" URL (port 6543) for VPS deployments.
+ * Connects via @supabase/supabase-js (HTTPS / PostgREST) instead of a raw
+ * PostgreSQL TCP connection, eliminating connection-pooler instability.
  *
- * API mirrors the old SQLite API but every method is async (returns a Promise).
+ * Required env vars:
+ *   SUPABASE_URL         https://your-ref.supabase.co
+ *   SUPABASE_SERVICE_KEY  service_role key (Settings → API → service_role)
+ *
+ * Requires two helper functions in your Supabase SQL editor (run once):
+ *
+ *   create or replace function run_select(q text)
+ *   returns json language plpgsql security definer set search_path = public as $$
+ *   declare result json;
+ *   begin
+ *     execute 'select coalesce(json_agg(r),''[]''::json) from (' || q || ') r' into result;
+ *     return coalesce(result, '[]'::json);
+ *   exception when others then raise exception '%', sqlerrm;
+ *   end; $$;
+ *
+ *   create or replace function run_dml(q text)
+ *   returns int language plpgsql security definer set search_path = public as $$
+ *   declare n int;
+ *   begin
+ *     execute q;
+ *     get diagnostics n = row_count;
+ *     return n;
+ *   exception when others then raise exception '%', sqlerrm;
+ *   end; $$;
+ *
+ * API (all methods return Promises — same as before):
  *   db.prepare(sql).all(...params)  → Promise<row[]>
  *   db.prepare(sql).get(...params)  → Promise<row | null>
  *   db.prepare(sql).run(...params)  → Promise<{ changes: number }>
- *   db.exec(sql)                    → Promise<void>
- *   db.query(sql, params)           → Promise<row[]>   (raw pg)
+ *   db.exec(sql)                    → Promise<void>   (DDL)
+ *   db.query(sql, params)           → Promise<row[]>
  */
-import 'dotenv/config';
-import pg from 'pg';
-const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('[db] DATABASE_URL is not set. Add it to your .env file.');
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  throw new Error(
+    '[db] SUPABASE_URL and SUPABASE_SERVICE_KEY must be set. ' +
+    'Get them from Supabase Dashboard → Settings → API.'
+  );
 }
 
-// Parse the URL manually so pg gets the FULL username (e.g. postgres.projectref)
-// rather than truncating at the dot — a known issue with pg's built-in URL parser.
-function parseDbUrl(rawUrl) {
-  const u = new URL(rawUrl);
-  return {
-    host:     u.hostname,
-    port:     parseInt(u.port) || 5432,
-    user:     decodeURIComponent(u.username),
-    password: decodeURIComponent(u.password),
-    database: u.pathname.replace(/^\//, ''),
-    ssl: { rejectUnauthorized: false },
-  };
+export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+/**
+ * Inline $1, $2 … positional params into a SQL string safely.
+ * Numbers / booleans / null are inlined directly.
+ * Strings get single-quote escaping ('' for every ').
+ */
+function bindParams(sql, params) {
+  if (!params.length) return sql;
+  return sql.replace(/\$(\d+)/g, (_, n) => {
+    const val = params[Number(n) - 1];
+    if (val === null || val === undefined) return 'NULL';
+    if (typeof val === 'number' || typeof val === 'bigint') return String(val);
+    if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+    // Escape backslashes first, then single quotes
+    return `'${String(val).replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
+  });
 }
 
-export const pool = new Pool({
-  ...parseDbUrl(process.env.DATABASE_URL),
-  max: 5,                              // Supabase session pooler works best with small pools
-  min: 1,                              // keep 1 connection warm — eliminates cold-start latency
-  idleTimeoutMillis: 60_000,           // hold idle connections longer to avoid reconnect overhead
-  connectionTimeoutMillis: 15_000,
-  keepAlive: true,                     // TCP keepalive prevents silent connection drops
-  keepAliveInitialDelayMillis: 10_000,
-});
+async function rpcSelect(sql) {
+  const { data, error } = await supabase.rpc('run_select', { q: sql });
+  if (error) {
+    const err = new Error(error.message);
+    err.hint = error.hint;
+    err.details = error.details;
+    throw err;
+  }
+  return Array.isArray(data) ? data : [];
+}
 
-pool.on('error', (err) => {
-  console.error('[db] idle client error:', err.message);
-});
-
-/** Convert SQLite ? placeholders to PostgreSQL $1, $2, … */
-function toPositional(sql) {
-  let i = 0;
-  return sql.replace(/\?/g, () => `$${++i}`);
+async function rpcDml(sql) {
+  const { data, error } = await supabase.rpc('run_dml', { q: sql });
+  if (error) {
+    const err = new Error(error.message);
+    err.hint = error.hint;
+    throw err;
+  }
+  return typeof data === 'number' ? data : 0;
 }
 
 /**
- * Thin compatibility shim.
- * Transforms SQL and exposes .all() / .get() / .run() as async methods.
+ * Thin compatibility shim — same API as the old pg-based db.prepare().
  */
 function prepare(sql) {
-  const pgSql = toPositional(sql);
   return {
     /** Returns array of rows */
-    all(...args) {
-      const params = args.flat();
-      return pool.query(pgSql, params.length ? params : undefined).then((r) => r.rows);
+    async all(...args) {
+      return rpcSelect(bindParams(sql, args.flat()));
     },
     /** Returns first row or null */
-    get(...args) {
-      const params = args.flat();
-      return pool
-        .query(pgSql, params.length ? params : undefined)
-        .then((r) => r.rows[0] ?? null);
+    async get(...args) {
+      const rows = await rpcSelect(bindParams(sql, args.flat()));
+      return rows[0] ?? null;
     },
     /** Returns { changes: rowCount } */
-    run(...args) {
-      const params = args.flat();
-      return pool
-        .query(pgSql, params.length ? params : undefined)
-        .then((r) => ({ changes: r.rowCount ?? 0 }));
+    async run(...args) {
+      const changes = await rpcDml(bindParams(sql, args.flat()));
+      return { changes };
     },
   };
 }
 
 export const db = {
   prepare,
-  /** Execute raw SQL (no return value — used for DDL) */
-  exec: (sql) => pool.query(sql).then(() => undefined),
+  /** Execute raw DDL — splits on ; and runs each statement */
+  exec: async (sql) => {
+    const stmts = sql.split(';').map((s) => s.trim()).filter(Boolean);
+    for (const stmt of stmts) {
+      try {
+        await rpcDml(stmt);
+      } catch (e) {
+        // Silently skip "already exists" errors during schema init
+        if (!e.message.includes('already exists') && !e.message.includes('duplicate')) throw e;
+      }
+    }
+  },
   /** Raw query — returns row array */
-  query: (sql, params = []) => pool.query(sql, params).then((r) => r.rows),
+  query: async (sql, params = []) => rpcSelect(bindParams(sql, params)),
   /**
-   * Fake transaction wrapper — calls fn directly without BEGIN/COMMIT.
-   * Real transactions would need a client handle passed into fn; for the
-   * bulk-insert use-cases in this app, sequential execution is fine.
+   * Fake transaction wrapper — runs fn directly.
+   * Real transactions would need explicit BEGIN/COMMIT via rpcDml; sufficient for this app.
    */
-  transaction: (fn) =>
-    async (...args) =>
-      fn(...args),
+  transaction: (fn) => async (...args) => fn(...args),
 };
 
 export default db;
