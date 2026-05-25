@@ -15,6 +15,7 @@ export function stopSequenceDispatcher() {
 }
 
 async function tick() {
+  try {
   const now = Date.now();
   const due = await db.prepare(
     `SELECT d.*, q.graph_json, q.name as queue_name, s.phone, sub.status as sub_status
@@ -42,5 +43,9 @@ async function tick() {
         'UPDATE sequence_dispatches SET status = $1, error = $2 WHERE id = $3'
       ).run('failed', e.message, d.id);
     }
+  }
+  } catch (e) {
+    // Never crash the process — DB may be temporarily unavailable
+    console.warn('[sequenceDispatcher] tick error (will retry):', e.message);
   }
 }
