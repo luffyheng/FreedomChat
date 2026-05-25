@@ -62,10 +62,6 @@ RUN npm ci --omit=dev
 # Copy source
 COPY . .
 
-# Persistent data lives here — mount a volume at this path in Railway/Fly.io
-# so WhatsApp session and uploaded media survive container restarts
-VOLUME ["/app/data"]
-
 EXPOSE 4000
 
 CMD ["node", "src/index.js"]
