@@ -85,7 +85,7 @@ export default function Connect() {
             <li>Your session stays authenticated across server restarts (local session files).</li>
           </ol>
           <div className="mt-6 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
-            Heads up: this uses the unofficial WhatsApp Web automation (like ChatMamba). Heavy
+            Heads up: this uses the unofficial WhatsApp Web automation (like FreedomChat). Heavy
             broadcasts or spammy usage may get your number banned. Warm up slowly and use it
             responsibly.
           </div>

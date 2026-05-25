@@ -77,7 +77,7 @@ export async function initWhatsApp() {
 
   client = new Client({
     authStrategy: new LocalAuth({
-      clientId: process.env.SESSION_NAME || 'chatmamba-default',
+      clientId: process.env.SESSION_NAME || 'freedomchat-default',
       dataPath: './data/wa-session',
     }),
     puppeteer: {

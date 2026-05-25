@@ -1,6 +1,6 @@
 {
-  "name": "ChatMamba",
-  "short_name": "ChatMamba",
+  "name": "FreedomChat",
+  "short_name": "FreedomChat",
   "description": "WhatsApp automation & quick replies",
   "start_url": "/quick-replies",
   "display": "standalone",

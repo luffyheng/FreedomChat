@@ -60,7 +60,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-2.5">
           <Mark />
           <div className="text-[14.5px] font-semibold tracking-tight2 text-ink">
-            ChatMamba
+            FreedomChat
           </div>
         </div>
       </div>

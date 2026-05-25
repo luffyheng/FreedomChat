@@ -30,7 +30,7 @@ export default function Login() {
       <div className="w-full max-w-[380px]">
         <div className="flex items-center gap-2.5 mb-8">
           <Mark />
-          <div className="text-[15px] font-semibold tracking-tight2 text-ink">ChatMamba</div>
+          <div className="text-[15px] font-semibold tracking-tight2 text-ink">FreedomChat</div>
         </div>
 
         <div className="surface p-6 sm:p-7">
@@ -77,7 +77,7 @@ export default function Login() {
         </div>
 
         <p className="text-[11.5px] text-ink-faint text-center mt-5">
-          Self-hosted &middot; ChatMamba Dispatch
+          Self-hosted &middot; FreedomChat Dispatch
         </p>
       </div>
     </div>
