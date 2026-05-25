@@ -11,19 +11,12 @@ const { Client, LocalAuth, MessageMedia } = pkg;
 const MEDIA_DIR = path.resolve('./data/uploads');
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
-// mimetype → reasonable file extension
 function extFor(mimetype = '') {
   const base = mimetype.split(';')[0].trim();
   const map = {
-    'image/jpeg': '.jpg',
-    'image/png': '.png',
-    'image/webp': '.webp',
-    'image/gif': '.gif',
-    'video/mp4': '.mp4',
-    'video/quicktime': '.mov',
-    'audio/ogg': '.ogg',
-    'audio/mpeg': '.mp3',
-    'audio/mp4': '.m4a',
+    'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
+    'image/gif': '.gif', 'video/mp4': '.mp4', 'video/quicktime': '.mov',
+    'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a',
     'application/pdf': '.pdf',
   };
   if (map[base]) return map[base];
@@ -31,8 +24,6 @@ function extFor(mimetype = '') {
   return sub ? '.' + sub.replace(/[^a-z0-9]/gi, '').slice(0, 6) : '';
 }
 
-// Resolve a @lid / @c.us JID to a real phone number + display name, if we can.
-// WhatsApp's newer LID system hides the real number; we fall back gracefully.
 async function resolveContact(client, jid, fallbackPushName = '') {
   const out = { resolved_number: null, push_name: fallbackPushName || '' };
   try {
@@ -48,20 +39,12 @@ async function resolveContact(client, jid, fallbackPushName = '') {
 
 let client = null;
 let currentQr = null;
-let status = 'idle'; // idle | qr | authenticated | ready | disconnected
+let status = 'idle';
 let io = null;
 
-export function setSocketIO(instance) {
-  io = instance;
-}
-
-function emit(event, data) {
-  if (io) io.emit(event, data);
-}
-
-export function getStatus() {
-  return { status, qr: currentQr };
-}
+export function setSocketIO(instance) { io = instance; }
+function emit(event, data) { if (io) io.emit(event, data); }
+export function getStatus() { return { status, qr: currentQr }; }
 
 export async function initWhatsApp() {
   if (client) return client;
@@ -73,14 +56,11 @@ export async function initWhatsApp() {
     }),
     puppeteer: {
       headless: true,
+      // Use system Chromium when running inside Docker (set by Dockerfile ENV)
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',      // prevents Chromium crash on VPS (limited /dev/shm)
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--disable-gpu',
       ],
     },
   });
@@ -108,33 +88,31 @@ export async function initWhatsApp() {
     emit('wa:status', { status, reason });
     client = null;
     currentQr = null;
-    // Auto-reconnect unless the user manually logged out
     if (reason !== 'LOGOUT') {
       console.log(`[whatsapp] disconnected (${reason}), reconnecting in 15s…`);
       setTimeout(() => {
-        initWhatsApp().catch(e => console.error('[whatsapp] reconnect failed:', e));
+        initWhatsApp().catch((e) => console.error('[whatsapp] reconnect failed:', e));
       }, 15000);
     }
   });
 
-  // Track delivery + read acks against broadcast targets.
-  // ack levels: 1 = sent to server, 2 = delivered to device, 3 = read, 4 = played
-  client.on('message_ack', (msg, ack) => {
+  // Track delivery + read acks against broadcast targets
+  client.on('message_ack', async (msg, ack) => {
     try {
       const wid = msg?.id?._serialized;
       if (!wid) return;
       const now = Date.now();
-      const target = db
-        .prepare('SELECT id, broadcast_id, delivered_at, read_at FROM broadcast_targets WHERE message_id = ?')
-        .get(wid);
+      const target = await db.prepare(
+        'SELECT id, broadcast_id, delivered_at, read_at FROM broadcast_targets WHERE message_id = $1'
+      ).get(wid);
       if (!target) return;
       let changed = false;
       if (ack >= 2 && !target.delivered_at) {
-        db.prepare('UPDATE broadcast_targets SET delivered_at = ? WHERE id = ?').run(now, target.id);
+        await db.prepare('UPDATE broadcast_targets SET delivered_at = $1 WHERE id = $2').run(now, target.id);
         changed = true;
       }
       if (ack >= 3 && !target.read_at) {
-        db.prepare('UPDATE broadcast_targets SET read_at = ? WHERE id = ?').run(now, target.id);
+        await db.prepare('UPDATE broadcast_targets SET read_at = $1 WHERE id = $2').run(now, target.id);
         changed = true;
       }
       if (changed) emit('broadcast:progress', { id: target.broadcast_id });
@@ -146,19 +124,16 @@ export async function initWhatsApp() {
   client.on('message', async (msg) => {
     try {
       if (msg.fromMe) return;
-      // Keep the full JID (@c.us, @lid, @g.us) so replies route correctly
       const phone = msg.from;
       const body = msg.body || '';
       const rawPush = msg._data?.notifyName || msg.notifyName || '';
 
-      // Group message? msg.author is the actual sender's JID inside the group.
       const isGroup = typeof phone === 'string' && phone.endsWith('@g.us');
       let authorJid = null;
       let authorName = '';
-      let contactPushName = rawPush; // for 1:1: use sender's name; overridden below for groups
+      let contactPushName = rawPush;
       if (isGroup) {
         authorJid = msg.author || msg._data?.author || null;
-        // rawPush is the SENDER's name — use it for author_name in the message record
         authorName = rawPush;
         if (authorJid && !authorName) {
           try {
@@ -166,7 +141,6 @@ export async function initWhatsApp() {
             authorName = c?.pushname || c?.name || c?.verifiedName || '';
           } catch {}
         }
-        // For the CONTACT record we want the GROUP name, not the sender's name
         try {
           const chat = await msg.getChat();
           contactPushName = chat.name || '';
@@ -191,87 +165,66 @@ export async function initWhatsApp() {
         }
       }
 
-      const msgId = nanoid();
-      db.prepare(
+      await db.prepare(
         `INSERT INTO messages
            (id, direction, phone, body, media_type, media_url, mimetype, author_jid, author_name, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
       ).run(
-        msgId,
-        'in',
-        phone,
-        body,
+        nanoid(), 'in', phone, body,
         msg.hasMedia ? msg.type : null,
-        mediaUrl,
-        mimetype,
-        authorJid,
-        authorName,
-        Date.now()
+        mediaUrl, mimetype, authorJid, authorName, Date.now()
       );
 
-      // upsert contact + try to resolve real identity (@lid → real number)
-      // Groups don't have a real phone number to resolve — use group name directly.
+      // Upsert contact
       const digitsOnly = String(phone).replace(/[^\d]/g, '');
-      const existing = db.prepare('SELECT id, push_name, resolved_number FROM contacts WHERE phone = ?').get(digitsOnly);
+      const existing = await db.prepare(
+        'SELECT id, push_name, resolved_number FROM contacts WHERE phone = $1'
+      ).get(digitsOnly);
       const needsResolve = !isGroup && (!existing?.resolved_number || !existing?.push_name);
       const resolved = needsResolve
         ? await resolveContact(client, phone, contactPushName)
         : { push_name: contactPushName, resolved_number: null };
 
       if (existing) {
-        db.prepare(
+        await db.prepare(
           `UPDATE contacts SET
-             last_activity = ?,
-             jid = ?,
-             push_name = COALESCE(NULLIF(?, ''), push_name),
-             resolved_number = COALESCE(?, resolved_number)
-           WHERE id = ?`
+             last_activity = $1,
+             jid = $2,
+             push_name = COALESCE(NULLIF($3, ''), push_name),
+             resolved_number = COALESCE($4, resolved_number)
+           WHERE id = $5`
         ).run(Date.now(), phone, resolved.push_name || '', resolved.resolved_number, existing.id);
       } else {
         try {
-          db.prepare(
+          await db.prepare(
             `INSERT INTO contacts
              (id, name, phone, jid, push_name, resolved_number, tags, created_at, last_activity, status)
-             VALUES (?,?,?,?,?,?,?,?,?,?)`
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
           ).run(
-            nanoid(),
-            '',
-            digitsOnly,
-            phone,
-            resolved.push_name || '',
-            resolved.resolved_number,
-            '',
-            Date.now(),
-            Date.now(),
-            'reachable'
+            nanoid(), '', digitsOnly, phone,
+            resolved.push_name || '', resolved.resolved_number,
+            '', Date.now(), Date.now(), 'reachable'
           );
         } catch {}
       }
 
       emit('wa:message', { direction: 'in', phone, body, mediaUrl, mimetype, at: Date.now() });
 
-      // Mark any prior broadcast targets to this number as "replied"
+      // Mark prior broadcast targets to this number as "replied"
       try {
         const replyAt = Date.now();
         const phoneVariants = [phone, digitsOnly];
-        const placeholders = phoneVariants.map(() => '?').join(',');
-        const updated = db
-          .prepare(
-            `UPDATE broadcast_targets
-             SET replied_at = ?
-             WHERE replied_at IS NULL
-               AND status = 'sent'
-               AND phone IN (${placeholders})`
-          )
-          .run(replyAt, ...phoneVariants);
+        const placeholders = phoneVariants.map((_, i) => `$${i + 2}`).join(',');
+        const updated = await db.prepare(
+          `UPDATE broadcast_targets
+           SET replied_at = $1
+           WHERE replied_at IS NULL AND status = 'sent' AND phone IN (${placeholders})`
+        ).run(replyAt, ...phoneVariants);
         if (updated.changes > 0) {
-          // Notify clients so the detail view refreshes reply counts live
-          const ids = db
-            .prepare(
-              `SELECT DISTINCT broadcast_id FROM broadcast_targets
-               WHERE replied_at = ? AND phone IN (${placeholders})`
-            )
-            .all(replyAt, ...phoneVariants);
+          const ids = await db.prepare(
+            `SELECT DISTINCT broadcast_id FROM broadcast_targets
+             WHERE replied_at = $1 AND phone IN (${placeholders})`
+          ).all(replyAt, ...phoneVariants);
           for (const row of ids) emit('broadcast:progress', { id: row.broadcast_id });
         }
       } catch (e) {
@@ -284,9 +237,7 @@ export async function initWhatsApp() {
     }
   });
 
-  // Catch messages sent from the paired WhatsApp app itself — these don't
-  // fire `message` (that's inbound-only) but they DO fire `message_create`
-  // with fromMe=true. Skip ones that our own sendText/sendMedia already logged.
+  // Catch messages sent from the paired WhatsApp app — fire `message_create` with fromMe=true
   client.on('message_create', async (msg) => {
     try {
       if (!msg.fromMe) return;
@@ -295,38 +246,35 @@ export async function initWhatsApp() {
       const body = msg.body || '';
       const trimmedBody = body.trim();
 
-      // De-dupe against messages we just logged from the UI (same phone, body, recent).
+      // De-dupe against messages we just logged from the UI
       const since = Date.now() - 5000;
-      const dup = db
-        .prepare(
-          `SELECT id FROM messages WHERE direction='out' AND phone=? AND body=? AND created_at > ? LIMIT 1`
-        )
-        .get(jid, body, since);
+      const dup = await db.prepare(
+        `SELECT id FROM messages WHERE direction='out' AND phone=$1 AND body=$2 AND created_at > $3 LIMIT 1`
+      ).get(jid, body, since);
       if (dup) return;
 
-      // Quick reply trigger: body is digits optionally followed by # (e.g. "1", "2#", "13#")
-      // Try exact match first, then digit-by-digit for combos like "13" → sends reply 1 + reply 3
+      // Quick reply trigger: digits optionally followed by #
       const triggerMatch = trimmedBody.match(/^(\d+)#?$/);
       if (triggerMatch && triggerMatch[1].length <= 10 && !msg.hasMedia) {
         const digits = triggerMatch[1];
-        // Try full code first (e.g. "13" as a single trigger), then individual digits
-        const exactQr = db.prepare('SELECT * FROM quick_replies WHERE trigger_code = ?').get(digits);
+        const exactQr = await db.prepare(
+          'SELECT * FROM quick_replies WHERE trigger_code = $1'
+        ).get(digits);
         const codesToTry = exactQr ? [digits] : [...new Set(digits.split(''))];
         let triggered = false;
         for (const code of codesToTry) {
-          const qr = exactQr && code === digits ? exactQr
-            : db.prepare('SELECT * FROM quick_replies WHERE trigger_code = ?').get(code);
+          const qr = (exactQr && code === digits)
+            ? exactQr
+            : await db.prepare('SELECT * FROM quick_replies WHERE trigger_code = $1').get(code);
           if (qr) {
             triggered = true;
-            const items = db
-              .prepare('SELECT * FROM quick_reply_items WHERE quick_reply_id = ? ORDER BY sort_order ASC')
-              .all(qr.id);
+            const items = await db.prepare(
+              'SELECT * FROM quick_reply_items WHERE quick_reply_id = $1 ORDER BY sort_order ASC'
+            ).all(qr.id);
             try {
-              // Show presence animation before sending
               const presenceSec = Number(qr.presence_seconds || 0);
               if (presenceSec > 0 && items.length > 0) {
-                const firstType = items[0].type;
-                const presenceState = firstType === 'audio' ? 'recording' : 'composing';
+                const presenceState = items[0].type === 'audio' ? 'recording' : 'composing';
                 await sendPresence(jid, presenceState, presenceSec * 1000);
               }
               for (const item of items) {
@@ -342,7 +290,7 @@ export async function initWhatsApp() {
             }
           }
         }
-        if (triggered) return; // don't log the trigger digit to the inbox
+        if (triggered) return;
       }
 
       let mediaUrl = null;
@@ -359,21 +307,14 @@ export async function initWhatsApp() {
         } catch {}
       }
 
-      db.prepare(
+      await db.prepare(
         `INSERT INTO messages
            (id, direction, phone, body, media_type, media_url, mimetype, author_jid, author_name, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
       ).run(
-        nanoid(),
-        'out',
-        jid,
-        body,
+        nanoid(), 'out', jid, body,
         msg.hasMedia ? msg.type : null,
-        mediaUrl,
-        mimetype,
-        null,
-        'You',
-        Date.now()
+        mediaUrl, mimetype, null, 'You', Date.now()
       );
 
       emit('wa:message', { direction: 'out', phone: jid, body, mediaUrl, mimetype, at: Date.now() });
@@ -388,12 +329,8 @@ export async function initWhatsApp() {
 
 export async function logout() {
   if (!client) return;
-  try {
-    await client.logout();
-  } catch {}
-  try {
-    await client.destroy();
-  } catch {}
+  try { await client.logout(); } catch {}
+  try { await client.destroy(); } catch {}
   client = null;
   status = 'idle';
   currentQr = null;
@@ -402,7 +339,6 @@ export async function logout() {
 
 function toJid(phone) {
   const s = String(phone);
-  // Already a JID (e.g. "64463633952991@lid" or "6017...@c.us") — use as-is
   if (s.includes('@')) return s;
   const digits = s.replace(/[^\d]/g, '');
   return `${digits}@c.us`;
@@ -420,7 +356,7 @@ function triggerRestart() {
   currentQr = null;
   emit('wa:status', { status });
   setTimeout(() => {
-    initWhatsApp().catch(e => console.error('[whatsapp] restart after crash failed:', e));
+    initWhatsApp().catch((e) => console.error('[whatsapp] restart after crash failed:', e));
   }, 10000);
 }
 
@@ -434,32 +370,29 @@ export async function sendText(phone, text) {
     if (isFrameError(e)) triggerRestart();
     throw e;
   }
-  db.prepare(
-    'INSERT INTO messages (id, direction, phone, body, media_type, created_at) VALUES (?,?,?,?,?,?)'
+  await db.prepare(
+    'INSERT INTO messages (id, direction, phone, body, media_type, created_at) VALUES ($1,$2,$3,$4,$5,$6)'
   ).run(nanoid(), 'out', phone, text, null, Date.now());
   emit('wa:message', { direction: 'out', phone, body: text, at: Date.now() });
-  // Attach the WA message id for callers (e.g. broadcast scheduler) that want to track acks
   return { ...sent, wa_message_id: sent?.id?._serialized || null };
 }
 
 export async function resolveAllContacts() {
   if (!client || status !== 'ready') throw new Error('WhatsApp not connected');
-  const rows = db
-    .prepare(
-      `SELECT id, phone, jid, push_name, resolved_number FROM contacts
-       WHERE (jid IS NOT NULL AND jid != '')
-          AND (resolved_number IS NULL OR resolved_number = '' OR push_name IS NULL OR push_name = '')`
-    )
-    .all();
+  const rows = await db.prepare(
+    `SELECT id, phone, jid, push_name, resolved_number FROM contacts
+     WHERE (jid IS NOT NULL AND jid != '')
+        AND (resolved_number IS NULL OR resolved_number = '' OR push_name IS NULL OR push_name = '')`
+  ).all();
   let updated = 0;
   for (const row of rows) {
     const r = await resolveContact(client, row.jid, row.push_name || '');
     if (r.resolved_number || r.push_name) {
-      db.prepare(
+      await db.prepare(
         `UPDATE contacts SET
-           resolved_number = COALESCE(?, resolved_number),
-           push_name = COALESCE(NULLIF(?, ''), push_name)
-         WHERE id = ?`
+           resolved_number = COALESCE($1, resolved_number),
+           push_name = COALESCE(NULLIF($2, ''), push_name)
+         WHERE id = $3`
       ).run(r.resolved_number, r.push_name || '', row.id);
       updated++;
     }
@@ -476,9 +409,7 @@ export async function sendPresence(phone, state = 'composing', ms = 1500) {
     else await chat.sendStateTyping();
     await new Promise((r) => setTimeout(r, Math.max(500, ms)));
     await chat.clearState();
-  } catch (e) {
-    // non-fatal — presence is best-effort
-  }
+  } catch {}
 }
 
 export async function sendMedia(phone, { url, base64, mimetype, filename, caption, sendAudioAsVoice = false }) {
@@ -486,8 +417,6 @@ export async function sendMedia(phone, { url, base64, mimetype, filename, captio
   const jid = toJid(phone);
   let media;
   if (url) {
-    // Handle both relative (/uploads/abc.png) and absolute
-    // (http://localhost:4000/uploads/abc.png) URLs pointing at our own uploads.
     const localMatch = String(url).match(/\/uploads\/([^/?#]+)(?:\?|#|$)/);
     if (localMatch) {
       const filePath = path.resolve('./data/uploads', localMatch[1]);
@@ -513,8 +442,8 @@ export async function sendMedia(phone, { url, base64, mimetype, filename, captio
     if (isFrameError(e)) triggerRestart();
     throw e;
   }
-  db.prepare(
-    'INSERT INTO messages (id, direction, phone, body, media_type, created_at) VALUES (?,?,?,?,?,?)'
+  await db.prepare(
+    'INSERT INTO messages (id, direction, phone, body, media_type, created_at) VALUES ($1,$2,$3,$4,$5,$6)'
   ).run(nanoid(), 'out', phone, caption || '', mimetype || 'media', Date.now());
   emit('wa:message', { direction: 'out', phone, body: caption || '[media]', at: Date.now() });
   return { ...sent, wa_message_id: sent?.id?._serialized || null };

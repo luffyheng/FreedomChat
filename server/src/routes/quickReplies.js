@@ -4,13 +4,14 @@ import db from '../db.js';
 import { sendText, sendMedia, sendPresence } from '../services/whatsapp.js';
 
 const router = Router();
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // GET /api/quick-replies — list all with items
-router.get('/', (req, res) => {
-  const rows = db.prepare('SELECT * FROM quick_replies ORDER BY created_at ASC').all();
-  const items = db.prepare('SELECT * FROM quick_reply_items ORDER BY sort_order ASC').all();
+router.get('/', async (req, res) => {
+  const [rows, items] = await Promise.all([
+    db.prepare('SELECT * FROM quick_replies ORDER BY created_at ASC').all(),
+    db.prepare('SELECT * FROM quick_reply_items ORDER BY sort_order ASC').all(),
+  ]);
   const itemsByQr = {};
   for (const it of items) {
     if (!itemsByQr[it.quick_reply_id]) itemsByQr[it.quick_reply_id] = [];
@@ -20,51 +21,50 @@ router.get('/', (req, res) => {
 });
 
 // POST /api/quick-replies — create
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { name, trigger_code = null, presence_seconds = 0, items = [] } = req.body || {};
   if (!name?.trim()) return res.status(400).json({ error: 'name required' });
 
   const id = nanoid();
   const now = Date.now();
 
-  // Check duplicate trigger code
   if (trigger_code) {
-    const existing = db.prepare('SELECT id FROM quick_replies WHERE trigger_code = ?').get(trigger_code);
+    const existing = await db.prepare(
+      'SELECT id FROM quick_replies WHERE trigger_code = $1'
+    ).get(trigger_code);
     if (existing) return res.status(400).json({ error: `Trigger code "${trigger_code}" is already in use` });
   }
 
-  db.prepare('INSERT INTO quick_replies (id, name, trigger_code, presence_seconds, created_at) VALUES (?,?,?,?,?)').run(
-    id, name.trim(), trigger_code || null, Number(presence_seconds) || 0, now
-  );
+  await db.prepare(
+    'INSERT INTO quick_replies (id, name, trigger_code, presence_seconds, created_at) VALUES ($1,$2,$3,$4,$5)'
+  ).run(id, name.trim(), trigger_code || null, Number(presence_seconds) || 0, now);
 
-  const insertItem = db.prepare(
-    'INSERT INTO quick_reply_items (id, quick_reply_id, type, content, url, sort_order) VALUES (?,?,?,?,?,?)'
-  );
-  const tx = db.transaction((list) => {
-    list.forEach((it, i) => {
-      insertItem.run(nanoid(), id, it.type || 'text', it.content || null, it.url || null, i);
-    });
-  });
-  tx(items);
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    await db.prepare(
+      'INSERT INTO quick_reply_items (id, quick_reply_id, type, content, url, sort_order) VALUES ($1,$2,$3,$4,$5,$6)'
+    ).run(nanoid(), id, it.type || 'text', it.content || null, it.url || null, i);
+  }
 
-  const created = db.prepare('SELECT * FROM quick_replies WHERE id = ?').get(id);
-  const createdItems = db.prepare('SELECT * FROM quick_reply_items WHERE quick_reply_id = ? ORDER BY sort_order').all(id);
+  const [created, createdItems] = await Promise.all([
+    db.prepare('SELECT * FROM quick_replies WHERE id = $1').get(id),
+    db.prepare('SELECT * FROM quick_reply_items WHERE quick_reply_id = $1 ORDER BY sort_order').all(id),
+  ]);
   res.json({ ...created, items: createdItems });
 });
 
 // PUT /api/quick-replies/:id — update
-router.put('/:id', (req, res) => {
-  const qr = db.prepare('SELECT * FROM quick_replies WHERE id = ?').get(req.params.id);
+router.put('/:id', async (req, res) => {
+  const qr = await db.prepare('SELECT * FROM quick_replies WHERE id = $1').get(req.params.id);
   if (!qr) return res.status(404).json({ error: 'not found' });
 
   const { name, trigger_code, presence_seconds, items } = req.body || {};
 
-  // Check duplicate trigger code (allow same ID to keep its own code)
-  if (trigger_code !== undefined && trigger_code !== qr.trigger_code) {
-    if (trigger_code) {
-      const existing = db.prepare('SELECT id FROM quick_replies WHERE trigger_code = ? AND id != ?').get(trigger_code, req.params.id);
-      if (existing) return res.status(400).json({ error: `Trigger code "${trigger_code}" is already in use` });
-    }
+  if (trigger_code !== undefined && trigger_code !== qr.trigger_code && trigger_code) {
+    const existing = await db.prepare(
+      'SELECT id FROM quick_replies WHERE trigger_code = $1 AND id != $2'
+    ).get(trigger_code, req.params.id);
+    if (existing) return res.status(400).json({ error: `Trigger code "${trigger_code}" is already in use` });
   }
 
   const updates = {};
@@ -73,32 +73,34 @@ router.put('/:id', (req, res) => {
   if (presence_seconds !== undefined) updates.presence_seconds = Number(presence_seconds) || 0;
 
   if (Object.keys(updates).length) {
-    const sql = 'UPDATE quick_replies SET ' + Object.keys(updates).map((k) => `${k} = ?`).join(', ') + ' WHERE id = ?';
-    db.prepare(sql).run(...Object.values(updates), req.params.id);
+    const keys = Object.keys(updates);
+    const vals = Object.values(updates);
+    const setClauses = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+    await db.prepare(
+      `UPDATE quick_replies SET ${setClauses} WHERE id = $${keys.length + 1}`
+    ).run(...vals, req.params.id);
   }
 
-  // Replace items if provided
   if (Array.isArray(items)) {
-    db.prepare('DELETE FROM quick_reply_items WHERE quick_reply_id = ?').run(req.params.id);
-    const insertItem = db.prepare(
-      'INSERT INTO quick_reply_items (id, quick_reply_id, type, content, url, sort_order) VALUES (?,?,?,?,?,?)'
-    );
-    const tx = db.transaction((list) => {
-      list.forEach((it, i) => {
-        insertItem.run(nanoid(), req.params.id, it.type || 'text', it.content || null, it.url || null, i);
-      });
-    });
-    tx(items);
+    await db.prepare('DELETE FROM quick_reply_items WHERE quick_reply_id = $1').run(req.params.id);
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      await db.prepare(
+        'INSERT INTO quick_reply_items (id, quick_reply_id, type, content, url, sort_order) VALUES ($1,$2,$3,$4,$5,$6)'
+      ).run(nanoid(), req.params.id, it.type || 'text', it.content || null, it.url || null, i);
+    }
   }
 
-  const updated = db.prepare('SELECT * FROM quick_replies WHERE id = ?').get(req.params.id);
-  const updatedItems = db.prepare('SELECT * FROM quick_reply_items WHERE quick_reply_id = ? ORDER BY sort_order').all(req.params.id);
+  const [updated, updatedItems] = await Promise.all([
+    db.prepare('SELECT * FROM quick_replies WHERE id = $1').get(req.params.id),
+    db.prepare('SELECT * FROM quick_reply_items WHERE quick_reply_id = $1 ORDER BY sort_order').all(req.params.id),
+  ]);
   res.json({ ...updated, items: updatedItems });
 });
 
 // DELETE /api/quick-replies/:id
-router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM quick_replies WHERE id = ?').run(req.params.id);
+router.delete('/:id', async (req, res) => {
+  await db.prepare('DELETE FROM quick_replies WHERE id = $1').run(req.params.id);
   res.json({ ok: true });
 });
 
@@ -107,15 +109,14 @@ router.post('/:id/send', async (req, res) => {
   const { phone } = req.body || {};
   if (!phone) return res.status(400).json({ error: 'phone required' });
 
-  const qr = db.prepare('SELECT * FROM quick_replies WHERE id = ?').get(req.params.id);
+  const qr = await db.prepare('SELECT * FROM quick_replies WHERE id = $1').get(req.params.id);
   if (!qr) return res.status(404).json({ error: 'not found' });
 
-  const items = db.prepare(
-    'SELECT * FROM quick_reply_items WHERE quick_reply_id = ? ORDER BY sort_order ASC'
+  const items = await db.prepare(
+    'SELECT * FROM quick_reply_items WHERE quick_reply_id = $1 ORDER BY sort_order ASC'
   ).all(req.params.id);
 
   try {
-    // Show presence animation before first item
     const presenceSec = Number(qr.presence_seconds || 0);
     if (presenceSec > 0 && items.length > 0) {
       const presenceState = items[0].type === 'audio' ? 'recording' : 'composing';

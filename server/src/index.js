@@ -8,7 +8,6 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketServer } from 'socket.io';
 
-import './db.js';
 import authRouter, { requireAuth, seedAdminUser } from './routes/auth.js';
 import whatsappRouter from './routes/whatsapp.js';
 import flowsRouter from './routes/flows.js';
@@ -26,22 +25,37 @@ import { initWhatsApp, setSocketIO, getStatus } from './services/whatsapp.js';
 import { startSequenceDispatcher } from './services/sequenceDispatcher.js';
 
 const PORT = process.env.PORT || 4000;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+
+// Allow multiple origins: Firebase Hosting URL + local dev
+// Set CLIENT_ORIGINS in .env as comma-separated list, e.g.:
+//   CLIENT_ORIGINS=https://chatmamba-app.web.app,https://your-custom-domain.com
+const rawOrigins = process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const allowedOrigins = rawOrigins.split(',').map((o) => o.trim()).filter(Boolean);
 
 const app = express();
-app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
 const server = http.createServer(app);
-const io = new SocketServer(server, { cors: { origin: CLIENT_ORIGIN } });
+const io = new SocketServer(server, {
+  cors: { origin: allowedOrigins, credentials: true },
+});
 setSocketIO(io);
 
 io.on('connection', (socket) => {
   socket.emit('wa:status', getStatus());
 });
 
-seedAdminUser();
+seedAdminUser().catch((e) => console.error('[auth] seed failed:', e));
 
 // Auto-start WhatsApp on boot — reuses saved session files if they exist (no QR needed)
 initWhatsApp().catch(e => console.error('[whatsapp] auto-start failed:', e));

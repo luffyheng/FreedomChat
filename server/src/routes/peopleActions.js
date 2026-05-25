@@ -12,34 +12,27 @@ function stripDigits(s) {
   return String(s || '').replace(/[^\d]/g, '');
 }
 
-// Return a unified "contact card" for a phone/jid:
-//   basic info, attributes, sequence subscriptions, recent flows that would match a message
-router.get('/:phone', (req, res) => {
+router.get('/:phone', async (req, res) => {
   const raw = req.params.phone;
   const digits = stripDigits(raw);
-  const contact =
-    db.prepare('SELECT * FROM contacts WHERE phone = ?').get(digits) ||
-    db.prepare('SELECT * FROM contacts WHERE jid = ?').get(raw) ||
-    null;
-  const attrs = db.prepare('SELECT key, value FROM user_attributes WHERE phone = ?').all(raw);
-  // sequences — subscribers table uses the JID form stored at subscribe time.
-  // Match against both jid and digits-only for safety.
-  const sequences = db
-    .prepare(
+  let contact = await db.prepare('SELECT * FROM contacts WHERE phone = $1').get(digits);
+  if (!contact) contact = await db.prepare('SELECT * FROM contacts WHERE jid = $1').get(raw);
+  const [attrs, sequences] = await Promise.all([
+    db.prepare('SELECT key, value FROM user_attributes WHERE phone = $1').all(raw),
+    db.prepare(
       `SELECT s.id, s.name, sub.status, sub.subscribed_at, sub.id as subscriber_id
          FROM sequence_subscribers sub
          JOIN sequences s ON s.id = sub.sequence_id
-        WHERE sub.phone = ? OR sub.phone = ?`
-    )
-    .all(raw, digits);
+        WHERE sub.phone = $1 OR sub.phone = $2`
+    ).all(raw, digits),
+  ]);
   res.json({ contact, attributes: attrs, sequences });
 });
 
-// Run an arbitrary flow against a phone (manual trigger)
 router.post('/:phone/run-flow', async (req, res) => {
   const { flowId } = req.body || {};
   if (!flowId) return res.status(400).json({ error: 'flowId required' });
-  const f = db.prepare('SELECT * FROM flows WHERE id = ?').get(flowId);
+  const f = await db.prepare('SELECT * FROM flows WHERE id = $1').get(flowId);
   if (!f) return res.status(404).json({ error: 'flow not found' });
   try {
     await runFlowGraph({
@@ -53,33 +46,32 @@ router.post('/:phone/run-flow', async (req, res) => {
   }
 });
 
-router.post('/:phone/subscribe', (req, res) => {
+router.post('/:phone/subscribe', async (req, res) => {
   const { sequenceId } = req.body || {};
   if (!sequenceId) return res.status(400).json({ error: 'sequenceId required' });
-  res.json(subscribePhoneToSequence(sequenceId, req.params.phone));
+  res.json(await subscribePhoneToSequence(sequenceId, req.params.phone));
 });
 
-router.post('/:phone/unsubscribe', (req, res) => {
+router.post('/:phone/unsubscribe', async (req, res) => {
   const { sequenceId } = req.body || {};
   if (!sequenceId) return res.status(400).json({ error: 'sequenceId required' });
-  res.json(unsubscribePhoneFromSequence(sequenceId, req.params.phone));
+  res.json(await unsubscribePhoneFromSequence(sequenceId, req.params.phone));
 });
 
-router.post('/:phone/attributes', (req, res) => {
+router.post('/:phone/attributes', async (req, res) => {
   const { key, value } = req.body || {};
   if (!key) return res.status(400).json({ error: 'key required' });
-  db.prepare(
-    `INSERT INTO user_attributes (phone, key, value, updated_at) VALUES (?,?,?,?)
-     ON CONFLICT(phone,key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+  await db.prepare(
+    `INSERT INTO user_attributes (phone, key, value, updated_at) VALUES ($1,$2,$3,$4)
+     ON CONFLICT(phone,key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at`
   ).run(req.params.phone, key, String(value ?? ''), Date.now());
   res.json({ ok: true });
 });
 
-router.delete('/:phone/attributes/:key', (req, res) => {
-  db.prepare('DELETE FROM user_attributes WHERE phone = ? AND key = ?').run(
-    req.params.phone,
-    req.params.key
-  );
+router.delete('/:phone/attributes/:key', async (req, res) => {
+  await db.prepare(
+    'DELETE FROM user_attributes WHERE phone = $1 AND key = $2'
+  ).run(req.params.phone, req.params.key);
   res.json({ ok: true });
 });
 

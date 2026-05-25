@@ -23,40 +23,31 @@ function matchTrigger(trigger, body) {
   return hay.includes(needle);
 }
 
-export function findMatchingFlows(body) {
-  const rows = db
-    .prepare(
-      `SELECT t.*, f.graph_json, f.enabled as flow_enabled, f.name as flow_name, f.id as flow_id
-       FROM triggers t JOIN flows f ON f.id = t.flow_id
-       WHERE t.enabled = 1 AND f.enabled = 1`
-    )
-    .all();
+export async function findMatchingFlows(body) {
+  const rows = await db.prepare(
+    `SELECT t.*, f.graph_json, f.enabled as flow_enabled, f.name as flow_name, f.id as flow_id
+     FROM triggers t JOIN flows f ON f.id = t.flow_id
+     WHERE t.enabled = 1 AND f.enabled = 1`
+  ).all();
   return rows.filter((r) => matchTrigger(r, body));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function interpolate(tpl, vars, phone) {
-  const attrs = phone ? getAttributes(phone) : {};
+async function interpolate(tpl, vars, phone) {
+  const attrs = phone ? await getAttributes(phone) : {};
   const all = { ...attrs, ...vars };
   return String(tpl).replace(/\{\{(\w+)\}\}/g, (_, k) => all[k] ?? '');
 }
 
 /**
  * Walks a node graph. Each non-branching node points to one outgoing edge.
- * Condition nodes use sourceHandle "yes" / "no".
- * A/B nodes use sourceHandle "a" / "b" with a probability weight.
- * Supported node types:
- *   trigger, sendText, sendImage, sendVideo, sendAudio, sendDocument, sendMedia,
- *   typing, recording, delay, condition, abTest, setAttribute, removeAttribute,
- *   subscribeSequence, unsubscribeSequence, redirectFlow, end
  */
 export async function runFlowGraph({ graph, phone, vars = {}, depth = 0 }) {
-  if (depth > 5) return; // guard against redirect loops
+  if (depth > 5) return;
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
-  const startNode =
-    nodes.find((n) => n.type === 'trigger') || nodes[0];
+  const startNode = nodes.find((n) => n.type === 'trigger') || nodes[0];
   if (!startNode) return;
 
   const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
@@ -75,7 +66,7 @@ export async function runFlowGraph({ graph, phone, vars = {}, depth = 0 }) {
     try {
       switch (type) {
         case 'sendText': {
-          const text = interpolate(data.text || '', vars, phone);
+          const text = await interpolate(data.text || '', vars, phone);
           if (text) await send('text', phone, { text });
           break;
         }
@@ -86,7 +77,7 @@ export async function runFlowGraph({ graph, phone, vars = {}, depth = 0 }) {
         case 'sendMedia': {
           await send('media', phone, {
             url: data.url,
-            caption: interpolate(data.caption || '', vars, phone),
+            caption: await interpolate(data.caption || '', vars, phone),
           });
           break;
         }
@@ -103,24 +94,24 @@ export async function runFlowGraph({ graph, phone, vars = {}, depth = 0 }) {
           break;
         }
         case 'setAttribute': {
-          if (data.key) setAttribute(phone, data.key, interpolate(data.value || '', vars, phone));
+          if (data.key) await setAttribute(phone, data.key, await interpolate(data.value || '', vars, phone));
           break;
         }
         case 'removeAttribute': {
-          if (data.key) removeAttribute(phone, data.key);
+          if (data.key) await removeAttribute(phone, data.key);
           break;
         }
         case 'subscribeSequence': {
-          if (data.sequenceId) subscribePhoneToSequence(data.sequenceId, phone);
+          if (data.sequenceId) await subscribePhoneToSequence(data.sequenceId, phone);
           break;
         }
         case 'unsubscribeSequence': {
-          if (data.sequenceId) unsubscribePhoneFromSequence(data.sequenceId, phone);
+          if (data.sequenceId) await unsubscribePhoneFromSequence(data.sequenceId, phone);
           break;
         }
         case 'redirectFlow': {
           if (data.flowId) {
-            const target = db.prepare('SELECT * FROM flows WHERE id = ?').get(data.flowId);
+            const target = await db.prepare('SELECT * FROM flows WHERE id = $1').get(data.flowId);
             if (target) {
               await runFlowGraph({
                 graph: JSON.parse(target.graph_json),
@@ -130,7 +121,7 @@ export async function runFlowGraph({ graph, phone, vars = {}, depth = 0 }) {
               });
             }
           }
-          return; // redirect terminates this flow
+          return;
         }
         case 'end':
           return;
@@ -144,7 +135,7 @@ export async function runFlowGraph({ graph, phone, vars = {}, depth = 0 }) {
     // pick next edge
     let next = null;
     if (type === 'condition') {
-      const needle = interpolate(data.expected || '', vars, phone).toLowerCase();
+      const needle = (await interpolate(data.expected || '', vars, phone)).toLowerCase();
       const matched = (vars.lastMessage || '').toLowerCase().includes(needle);
       const branch = matched ? 'yes' : 'no';
       const e = outgoing(current.id, branch)[0] || outgoing(current.id)[0];
@@ -163,10 +154,10 @@ export async function runFlowGraph({ graph, phone, vars = {}, depth = 0 }) {
 }
 
 export async function runFlowForIncoming({ phone, body }) {
-  const matches = findMatchingFlows(body);
+  const matches = await findMatchingFlows(body);
   const seen = new Set();
   for (const m of matches) {
-    if (seen.has(m.flow_id)) continue; // only run each flow once per message
+    if (seen.has(m.flow_id)) continue;
     seen.add(m.flow_id);
     let graph;
     try {

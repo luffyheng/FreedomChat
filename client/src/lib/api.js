@@ -1,4 +1,6 @@
-const base = '';
+// In production (Firebase Hosting), VITE_API_URL points to the Railway backend.
+// In local dev, empty string — Vite proxy forwards /api/* to localhost:4000.
+const base = import.meta.env.VITE_API_URL || '';
 
 async function req(path, options = {}) {
   const res = await fetch(base + path, {
