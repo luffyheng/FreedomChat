@@ -18,15 +18,23 @@ router.get('/', async (req, res) => {
         'SELECT * FROM contacts ORDER BY COALESCE(last_activity, created_at) DESC LIMIT 2000'
       ).all();
 
-  // attach sequence subscriptions (with status) to each contact
-  for (const r of rows) {
-    const seqs = await db.prepare(
-      `SELECT s.name, sub.status FROM sequence_subscribers sub
+  // Batch-fetch all sequence subscriptions in ONE query (avoids N+1)
+  if (rows.length > 0) {
+    const phoneList = rows.map((r) => `'${String(r.phone).replace(/'/g, "''")}'`).join(',');
+    const allSeqs = await db.prepare(
+      `SELECT sub.phone, s.name, sub.status FROM sequence_subscribers sub
          JOIN sequences s ON s.id = sub.sequence_id
-       WHERE sub.phone = $1 AND sub.status IN ('active','paused') LIMIT 5`
-    ).all(r.phone);
-    r.sequence_subs = seqs; // [{ name, status }]
-    r.sequences = seqs.map((s) => s.name); // backwards compat
+       WHERE sub.phone IN (${phoneList}) AND sub.status IN ('active','paused')`
+    ).all();
+    const seqMap = {};
+    for (const seq of allSeqs) {
+      if (!seqMap[seq.phone]) seqMap[seq.phone] = [];
+      seqMap[seq.phone].push(seq);
+    }
+    for (const r of rows) {
+      r.sequence_subs = seqMap[r.phone] || [];
+      r.sequences = r.sequence_subs.map((s) => s.name);
+    }
   }
   res.json(rows);
 });
