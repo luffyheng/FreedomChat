@@ -21,9 +21,22 @@ if (!process.env.DATABASE_URL) {
   throw new Error('[db] DATABASE_URL is not set. Add it to your .env file.');
 }
 
+// Parse the URL manually so pg gets the FULL username (e.g. postgres.projectref)
+// rather than truncating at the dot — a known issue with pg's built-in URL parser.
+function parseDbUrl(rawUrl) {
+  const u = new URL(rawUrl);
+  return {
+    host:     u.hostname,
+    port:     parseInt(u.port) || 5432,
+    user:     decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    database: u.pathname.replace(/^\//, ''),
+    ssl: { rejectUnauthorized: false },
+  };
+}
+
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // required for Supabase
+  ...parseDbUrl(process.env.DATABASE_URL),
   max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
