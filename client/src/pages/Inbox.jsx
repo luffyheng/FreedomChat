@@ -158,6 +158,8 @@ export default function Inbox() {
     try {
       await api.whatsapp.send(activePhone, draft);
       setDraft('');
+      loadThreads();
+      loadMessages(activePhone);
     } catch (err) {
       toast.error(err.message);
     }
@@ -169,6 +171,9 @@ export default function Inbox() {
     try {
       const r = await api.quickReplies.send(qrId, activePhone);
       toast.success(`Sent ${r.sent} item${r.sent === 1 ? '' : 's'}`);
+      // Force reload — don't rely on socket timing after multi-item sends
+      loadThreads();
+      loadMessages(activePhone);
     } catch (err) {
       toast.error(err.message);
     }
