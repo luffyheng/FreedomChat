@@ -5,6 +5,7 @@ import path from 'node:path';
 import { nanoid } from 'nanoid';
 import db from '../db.js';
 import { runFlowForIncoming } from './flowEngine.js';
+import { pauseAllSequencesForPhone, resumeAllSequencesForPhone } from '../routes/sequences.js';
 
 const { Client, LocalAuth, MessageMedia } = pkg;
 
@@ -288,6 +289,16 @@ export async function initWhatsApp() {
         console.error('reply tracking error:', e);
       }
 
+      // Auto-pause sequences if contact replies with opt-out keyword
+      if (!msg.hasMedia) {
+        const lower = body.trim().toLowerCase();
+        if (['stop', 'unsubscribe', 'pause sending'].includes(lower)) {
+          try { await pauseAllSequencesForPhone(phone); } catch {}
+        } else if (['resume', 'start', 'subscribe', 'resume sending'].includes(lower)) {
+          try { await resumeAllSequencesForPhone(phone); } catch {}
+        }
+      }
+
       await runFlowForIncoming({ phone, body });
     } catch (e) {
       console.error('message handler error:', e);
@@ -309,6 +320,30 @@ export async function initWhatsApp() {
         `SELECT id FROM messages WHERE direction='out' AND phone=$1 AND body=$2 AND created_at > $3 LIMIT 1`
       ).get(jid, body, since);
       if (dup) return;
+
+      // Sequence control keywords — type these while chatting with a contact to pause/resume
+      // their follow-up sequences without opening the dashboard.
+      if (!msg.hasMedia) {
+        const lower = trimmedBody.toLowerCase();
+        if (lower === 'pause sending' || lower === 'pause follow up' || lower === 'pause followup') {
+          try {
+            const result = await pauseAllSequencesForPhone(jid);
+            console.log(`[whatsapp] paused ${result.paused} sequence(s) for ${jid}`);
+          } catch (e) {
+            console.error('[whatsapp] pause keyword error:', e.message);
+          }
+          return; // don't log this as a message
+        }
+        if (lower === 'resume sending' || lower === 'resume follow up' || lower === 'resume followup') {
+          try {
+            const result = await resumeAllSequencesForPhone(jid);
+            console.log(`[whatsapp] resumed ${result.resumed} sequence(s) for ${jid}`);
+          } catch (e) {
+            console.error('[whatsapp] resume keyword error:', e.message);
+          }
+          return; // don't log this as a message
+        }
+      }
 
       // Quick reply trigger — only fires when YOU send a message from your phone.
       // Supports any trigger_code: keywords, symbols, English, Mandarin, digits.

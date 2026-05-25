@@ -116,6 +116,16 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ sequenceId }),
       }),
+    pauseSequence: (phone, sequenceId) =>
+      req(`/api/people/${encodeURIComponent(phone)}/pause-sequence`, {
+        method: 'POST',
+        body: JSON.stringify({ sequenceId }),
+      }),
+    resumeSequence: (phone, sequenceId) =>
+      req(`/api/people/${encodeURIComponent(phone)}/resume-sequence`, {
+        method: 'POST',
+        body: JSON.stringify({ sequenceId }),
+      }),
     setAttribute: (phone, key, value) =>
       req(`/api/people/${encodeURIComponent(phone)}/attributes`, {
         method: 'POST',

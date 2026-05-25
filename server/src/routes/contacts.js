@@ -18,14 +18,15 @@ router.get('/', async (req, res) => {
         'SELECT * FROM contacts ORDER BY COALESCE(last_activity, created_at) DESC LIMIT 2000'
       ).all();
 
-  // attach sequences subscribed to
+  // attach sequence subscriptions (with status) to each contact
   for (const r of rows) {
     const seqs = await db.prepare(
-      `SELECT s.name FROM sequence_subscribers sub
+      `SELECT s.name, sub.status FROM sequence_subscribers sub
          JOIN sequences s ON s.id = sub.sequence_id
-       WHERE sub.phone = $1 AND sub.status = 'active' LIMIT 5`
+       WHERE sub.phone = $1 AND sub.status IN ('active','paused') LIMIT 5`
     ).all(r.phone);
-    r.sequences = seqs.map((s) => s.name);
+    r.sequence_subs = seqs; // [{ name, status }]
+    r.sequences = seqs.map((s) => s.name); // backwards compat
   }
   res.json(rows);
 });

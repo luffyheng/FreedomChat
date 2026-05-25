@@ -127,10 +127,28 @@ export default function Contacts() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {c.sequences?.length ? (
+                      {c.sequence_subs?.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {c.sequence_subs.map((s) => (
+                            <span
+                              key={s.name}
+                              className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                s.status === 'active'
+                                  ? 'bg-green-100 text-green-700'
+                                  : s.status === 'paused'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-slate-100 text-slate-500'
+                              }`}
+                              title={s.status}
+                            >
+                              {s.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : c.sequences?.length ? (
                         <div className="flex flex-wrap gap-1">
                           {c.sequences.map((s) => (
-                            <span key={s} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                            <span key={s} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                               {s}
                             </span>
                           ))}

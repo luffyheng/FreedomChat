@@ -29,6 +29,9 @@ async function tick() {
 
   for (const d of due) {
     try {
+      if (d.sub_status === 'paused') {
+        continue; // keep pending — will fire automatically when subscriber is resumed
+      }
       if (d.sub_status !== 'active') {
         await db.prepare("UPDATE sequence_dispatches SET status = 'cancelled' WHERE id = $1").run(d.id);
         continue;

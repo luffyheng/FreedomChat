@@ -10,6 +10,8 @@ import {
   Workflow,
   BellOff,
   BellRing,
+  PauseCircle,
+  PlayCircle,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 
@@ -39,7 +41,10 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
 
   if (!phone) return null;
 
-  const subscribedIds = new Set((info?.sequences || []).filter((s) => s.status === 'active').map((s) => s.id));
+  // Map sequence_id → subscription info ({ status, subscriber_id, subscribed_at })
+  const subMap = Object.fromEntries(
+    (info?.sequences || []).map((s) => [s.id, s])
+  );
   const pushName = info?.contact?.push_name || info?.contact?.name;
   const initials = (pushName || phone).slice(0, 2).toUpperCase();
 
@@ -55,7 +60,7 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
   const subscribe = async (sequenceId) => {
     try {
       await api.people.subscribe(phone, sequenceId);
-      toast.success('Subscribed');
+      toast.success('Subscribed to sequence');
       load();
     } catch (e) {
       toast.error(e.message);
@@ -65,7 +70,27 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
   const unsubscribe = async (sequenceId) => {
     try {
       await api.people.unsubscribe(phone, sequenceId);
-      toast('Unsubscribed', { icon: '👋' });
+      toast('Sequence stopped', { icon: '⏹' });
+      load();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const pauseSeq = async (sequenceId) => {
+    try {
+      await api.people.pauseSequence(phone, sequenceId);
+      toast('Sequence paused', { icon: '⏸' });
+      load();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const resumeSeq = async (sequenceId) => {
+    try {
+      await api.people.resumeSequence(phone, sequenceId);
+      toast.success('Sequence resumed');
       load();
     } catch (e) {
       toast.error(e.message);
@@ -124,26 +149,69 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
           {sequences.length === 0 ? (
             <p className="text-xs text-slate-400">No sequences exist yet.</p>
           ) : (
-            <ul className="space-y-1">
+            <ul className="space-y-2">
               {sequences.map((s) => {
-                const isSubbed = subscribedIds.has(s.id);
+                const sub = subMap[s.id];
+                const status = sub?.status; // 'active' | 'paused' | 'unsubscribed' | undefined
                 return (
-                  <li key={s.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-sm text-slate-700 truncate flex-1">{s.name}</span>
-                    {isSubbed ? (
-                      <button
-                        className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-700 hover:bg-amber-100 flex items-center gap-1"
-                        onClick={() => unsubscribe(s.id)}
-                      >
-                        <BellOff size={11} /> Unsubscribe
-                      </button>
-                    ) : (
-                      <button
-                        className="text-xs px-2 py-1 rounded-md bg-brand-50 text-brand-700 hover:bg-brand-100 flex items-center gap-1"
-                        onClick={() => subscribe(s.id)}
-                      >
-                        <BellRing size={11} /> Subscribe
-                      </button>
+                  <li key={s.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <span className="text-sm text-slate-700 truncate flex-1 font-medium">{s.name}</span>
+                      {status === 'active' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold shrink-0">Active</span>
+                      )}
+                      {status === 'paused' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold shrink-0">Paused</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {status === 'active' && (
+                        <>
+                          <button
+                            className="text-[11px] px-2 py-1 rounded bg-amber-50 text-amber-700 hover:bg-amber-100 flex items-center gap-1"
+                            onClick={() => pauseSeq(s.id)}
+                            title="Pause follow-up — resumes when you click Resume"
+                          >
+                            <PauseCircle size={11} /> Pause
+                          </button>
+                          <button
+                            className="text-[11px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1"
+                            onClick={() => unsubscribe(s.id)}
+                            title="Stop follow-up permanently"
+                          >
+                            <BellOff size={11} /> Stop
+                          </button>
+                        </>
+                      )}
+                      {status === 'paused' && (
+                        <>
+                          <button
+                            className="text-[11px] px-2 py-1 rounded bg-green-50 text-green-700 hover:bg-green-100 flex items-center gap-1"
+                            onClick={() => resumeSeq(s.id)}
+                          >
+                            <PlayCircle size={11} /> Resume
+                          </button>
+                          <button
+                            className="text-[11px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1"
+                            onClick={() => unsubscribe(s.id)}
+                          >
+                            <BellOff size={11} /> Stop
+                          </button>
+                        </>
+                      )}
+                      {(!status || status === 'unsubscribed') && (
+                        <button
+                          className="text-[11px] px-2 py-1 rounded bg-brand-50 text-brand-700 hover:bg-brand-100 flex items-center gap-1"
+                          onClick={() => subscribe(s.id)}
+                        >
+                          <BellRing size={11} /> Subscribe
+                        </button>
+                      )}
+                    </div>
+                    {sub?.subscribed_at && (
+                      <div className="text-[10px] text-slate-400 mt-1">
+                        since {new Date(Number(sub.subscribed_at)).toLocaleDateString()}
+                      </div>
                     )}
                   </li>
                 );

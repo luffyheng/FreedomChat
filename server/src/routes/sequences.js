@@ -8,7 +8,8 @@ router.get('/', async (req, res) => {
   const rows = await db.prepare(
     `SELECT s.*,
       (SELECT COUNT(*) FROM sequence_queues q WHERE q.sequence_id = s.id) as queue_count,
-      (SELECT COUNT(*) FROM sequence_subscribers sub WHERE sub.sequence_id = s.id AND sub.status='active') as subscriber_count
+      (SELECT COUNT(*) FROM sequence_subscribers sub WHERE sub.sequence_id = s.id AND sub.status='active') as subscriber_count,
+      (SELECT COUNT(*) FROM sequence_subscribers sub WHERE sub.sequence_id = s.id AND sub.status='paused') as paused_count
      FROM sequences s ORDER BY created_at DESC`
   ).all();
   res.json(rows);
@@ -85,11 +86,23 @@ router.delete('/queues/:queueId', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Manual subscribe
+// Manual subscribe / pause / resume per sequence
 router.post('/:id/subscribe', async (req, res) => {
   const { phone } = req.body || {};
   if (!phone) return res.status(400).json({ error: 'phone required' });
   res.json(await subscribePhoneToSequence(req.params.id, phone));
+});
+
+router.post('/:id/pause', async (req, res) => {
+  const { phone } = req.body || {};
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+  res.json(await pausePhoneInSequence(req.params.id, phone));
+});
+
+router.post('/:id/resume', async (req, res) => {
+  const { phone } = req.body || {};
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+  res.json(await resumePhoneInSequence(req.params.id, phone));
 });
 
 export async function subscribePhoneToSequence(sequenceId, phone) {
@@ -129,9 +142,59 @@ export async function unsubscribePhoneFromSequence(sequenceId, phone) {
   if (!sub) return { ok: true };
   await db.prepare('UPDATE sequence_subscribers SET status = $1 WHERE id = $2').run('unsubscribed', sub.id);
   await db.prepare(
-    "UPDATE sequence_dispatches SET status = $1 WHERE subscriber_id = $2 AND status = $3"
-  ).run('cancelled', sub.id, 'pending');
+    "UPDATE sequence_dispatches SET status = $1 WHERE subscriber_id = $2 AND status IN ('pending','paused')"
+  ).run('cancelled', sub.id);
   return { ok: true };
+}
+
+/** Pause a contact's subscription to one sequence — dispatches stay pending */
+export async function pausePhoneInSequence(sequenceId, phone) {
+  const digits = String(phone).replace(/[^\d]/g, '');
+  const sub = await db.prepare(
+    `SELECT * FROM sequence_subscribers
+     WHERE sequence_id = $1 AND (phone = $2 OR phone = $3) LIMIT 1`
+  ).get(sequenceId, phone, digits);
+  if (!sub) return { ok: true, noop: true };
+  if (sub.status === 'paused') return { ok: true, already: true };
+  await db.prepare('UPDATE sequence_subscribers SET status = $1 WHERE id = $2').run('paused', sub.id);
+  return { ok: true };
+}
+
+/** Resume a contact's paused subscription */
+export async function resumePhoneInSequence(sequenceId, phone) {
+  const digits = String(phone).replace(/[^\d]/g, '');
+  const sub = await db.prepare(
+    `SELECT * FROM sequence_subscribers
+     WHERE sequence_id = $1 AND (phone = $2 OR phone = $3) LIMIT 1`
+  ).get(sequenceId, phone, digits);
+  if (!sub) return { error: 'not subscribed' };
+  if (sub.status === 'active') return { ok: true, already: true };
+  await db.prepare('UPDATE sequence_subscribers SET status = $1 WHERE id = $2').run('active', sub.id);
+  return { ok: true };
+}
+
+/** Pause ALL active sequences for a phone (keyword trigger from WhatsApp) */
+export async function pauseAllSequencesForPhone(phone) {
+  const digits = String(phone).replace(/[^\d]/g, '');
+  const subs = await db.prepare(
+    `SELECT id FROM sequence_subscribers WHERE (phone = $1 OR phone = $2) AND status = 'active'`
+  ).all(phone, digits);
+  for (const sub of subs) {
+    await db.prepare('UPDATE sequence_subscribers SET status = $1 WHERE id = $2').run('paused', sub.id);
+  }
+  return { ok: true, paused: subs.length };
+}
+
+/** Resume ALL paused sequences for a phone (keyword trigger from WhatsApp) */
+export async function resumeAllSequencesForPhone(phone) {
+  const digits = String(phone).replace(/[^\d]/g, '');
+  const subs = await db.prepare(
+    `SELECT id FROM sequence_subscribers WHERE (phone = $1 OR phone = $2) AND status = 'paused'`
+  ).all(phone, digits);
+  for (const sub of subs) {
+    await db.prepare('UPDATE sequence_subscribers SET status = $1 WHERE id = $2').run('active', sub.id);
+  }
+  return { ok: true, resumed: subs.length };
 }
 
 export default router;

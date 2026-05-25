@@ -67,9 +67,12 @@ export default function Sequences() {
                     {s.enabled ? 'Active' : 'Paused'}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-slate-500 mt-3">
-                  <span className="flex items-center gap-1"><Clock size={12} /> {s.queue_count} queue{s.queue_count === 1 ? '' : 's'}</span>
-                  <span className="flex items-center gap-1"><Users size={12} /> {s.subscriber_count} active</span>
+                <div className="flex items-center gap-3 text-xs text-slate-500 mt-3 flex-wrap">
+                  <span className="flex items-center gap-1"><Clock size={12} /> {s.queue_count} step{s.queue_count === 1 ? '' : 's'}</span>
+                  <span className="flex items-center gap-1 text-green-600"><Users size={12} /> {s.subscriber_count} active</span>
+                  {s.paused_count > 0 && (
+                    <span className="flex items-center gap-1 text-amber-600"><Users size={12} /> {s.paused_count} paused</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-5">
                   <Link className="btn-outline" to={`/sequences/${s.id}`}>Open</Link>

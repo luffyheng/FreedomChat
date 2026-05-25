@@ -4,6 +4,8 @@ import { runFlowGraph } from '../services/flowEngine.js';
 import {
   subscribePhoneToSequence,
   unsubscribePhoneFromSequence,
+  pausePhoneInSequence,
+  resumePhoneInSequence,
 } from './sequences.js';
 
 const router = Router();
@@ -56,6 +58,18 @@ router.post('/:phone/unsubscribe', async (req, res) => {
   const { sequenceId } = req.body || {};
   if (!sequenceId) return res.status(400).json({ error: 'sequenceId required' });
   res.json(await unsubscribePhoneFromSequence(sequenceId, req.params.phone));
+});
+
+router.post('/:phone/pause-sequence', async (req, res) => {
+  const { sequenceId } = req.body || {};
+  if (!sequenceId) return res.status(400).json({ error: 'sequenceId required' });
+  res.json(await pausePhoneInSequence(sequenceId, req.params.phone));
+});
+
+router.post('/:phone/resume-sequence', async (req, res) => {
+  const { sequenceId } = req.body || {};
+  if (!sequenceId) return res.status(400).json({ error: 'sequenceId required' });
+  res.json(await resumePhoneInSequence(sequenceId, req.params.phone));
 });
 
 router.post('/:phone/attributes', async (req, res) => {
