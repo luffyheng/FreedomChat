@@ -3,10 +3,13 @@
 const base = import.meta.env.VITE_API_URL || '';
 
 const TOKEN_KEY = 'fc_token';
+const USER_KEY  = 'fc_user';
 export const tokenStore = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (t) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  get:      ()  => localStorage.getItem(TOKEN_KEY),
+  set:      (t) => localStorage.setItem(TOKEN_KEY, t),
+  clear:    ()  => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); },
+  getUser:  ()  => { try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch { return null; } },
+  setUser:  (u) => localStorage.setItem(USER_KEY, JSON.stringify(u)),
 };
 
 async function req(path, options = {}) {
