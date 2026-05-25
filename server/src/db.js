@@ -27,9 +27,6 @@ export const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
-  // Force IPv4 — Render's network doesn't support IPv6 outbound connections.
-  // Supabase's direct connection host resolves to IPv6 (AAAA), which fails with ENETUNREACH.
-  family: 4,
 });
 
 pool.on('error', (err) => {

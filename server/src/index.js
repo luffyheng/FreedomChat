@@ -1,4 +1,9 @@
 import 'dotenv/config';
+// Force IPv4 DNS resolution — Render's network blocks outbound IPv6.
+// Supabase's direct host resolves to an AAAA (IPv6) record which causes ENETUNREACH.
+import { setDefaultResultOrder } from 'node:dns';
+setDefaultResultOrder('ipv4first');
+
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
