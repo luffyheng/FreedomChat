@@ -67,9 +67,16 @@ function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
+// Extract session token from cookie OR Authorization: Bearer header
+function extractToken(req) {
+  const authHeader = req.headers['authorization'] || '';
+  if (authHeader.startsWith('Bearer ')) return authHeader.slice(7).trim();
+  return req.cookies?.[SESSION_COOKIE] || null;
+}
+
 export async function requireAuth(req, res, next) {
   try {
-    const sid = req.cookies?.[SESSION_COOKIE];
+    const sid = extractToken(req);
     const session = await lookupSession(sid);
     if (!session) return res.status(401).json({ error: 'unauthorized' });
     req.user = { id: session.user_id, email: session.email };
@@ -98,7 +105,7 @@ const router = Router();
 
 router.get('/me', async (req, res) => {
   try {
-    const sid = req.cookies?.[SESSION_COOKIE];
+    const sid = extractToken(req);
     const session = await lookupSession(sid);
     if (!session) return res.json({ user: null });
     res.json({ user: { id: session.user_id, email: session.email } });
@@ -119,12 +126,13 @@ router.post('/login', async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'invalid credentials' });
 
   const sid = await createSession(user.id);
-  setSessionCookie(res, sid);
-  res.json({ user: { id: user.id, email: user.email } });
+  setSessionCookie(res, sid); // kept for same-domain/local dev
+  // Also return token in body so cross-domain clients can store in localStorage
+  res.json({ user: { id: user.id, email: user.email }, token: sid });
 });
 
 router.post('/logout', async (req, res) => {
-  const sid = req.cookies?.[SESSION_COOKIE];
+  const sid = extractToken(req);
   await destroySession(sid);
   clearSessionCookie(res);
   res.json({ ok: true });

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { api } from './api.js';
+import { tokenStore } from './api.js';
 
 const AuthContext = createContext(null);
 
@@ -11,8 +12,10 @@ export function AuthProvider({ children }) {
     try {
       const data = await api.auth.me();
       setUser(data.user || null);
+      if (!data.user) tokenStore.clear();
     } catch {
       setUser(null);
+      tokenStore.clear();
     }
   };
 
@@ -22,12 +25,14 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const data = await api.auth.login(email, password);
+    if (data.token) tokenStore.set(data.token); // store for cross-domain requests
     setUser(data.user);
     return data.user;
   };
 
   const logout = async () => {
     try { await api.auth.logout(); } catch {}
+    tokenStore.clear();
     setUser(null);
   };
 

@@ -1,15 +1,26 @@
-// In production (Firebase Hosting), VITE_API_URL points to the Railway backend.
+// In production (Firebase Hosting), VITE_API_URL points to the Render backend.
 // In local dev, empty string — Vite proxy forwards /api/* to localhost:4000.
 const base = import.meta.env.VITE_API_URL || '';
 
+const TOKEN_KEY = 'fc_token';
+export const tokenStore = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (t) => localStorage.setItem(TOKEN_KEY, t),
+  clear: () => localStorage.removeItem(TOKEN_KEY),
+};
+
 async function req(path, options = {}) {
+  const token = tokenStore.get();
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(base + path, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers,
     ...options,
   });
   if (res.status === 401 && !path.startsWith('/api/auth/')) {
-    // Force a clean redirect so the AuthProvider re-fetches /me.
+    tokenStore.clear();
     if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
       window.location.href = '/login';
     }
