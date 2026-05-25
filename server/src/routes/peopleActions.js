@@ -19,7 +19,7 @@ router.get('/:phone', async (req, res) => {
   const digits = stripDigits(raw);
   let contact = await db.prepare('SELECT * FROM contacts WHERE phone = $1').get(digits);
   if (!contact) contact = await db.prepare('SELECT * FROM contacts WHERE jid = $1').get(raw);
-  const [attrs, sequences] = await Promise.all([
+  const [attrs, sequencesRaw] = await Promise.all([
     db.prepare('SELECT key, value FROM user_attributes WHERE phone = $1').all(raw),
     db.prepare(
       `SELECT s.id, s.name, sub.status, sub.subscribed_at, sub.id as subscriber_id
@@ -28,6 +28,21 @@ router.get('/:phone', async (req, res) => {
         WHERE sub.phone = $1 OR sub.phone = $2`
     ).all(raw, digits),
   ]);
+
+  // Attach the next pending dispatch to each subscription
+  const sequences = await Promise.all(
+    sequencesRaw.map(async (sub) => {
+      const nextDispatch = await db.prepare(
+        `SELECT d.id, d.due_at, q.name as queue_name, q.position
+         FROM sequence_dispatches d
+         JOIN sequence_queues q ON q.id = d.queue_id
+         WHERE d.subscriber_id = $1 AND d.status = 'pending'
+         ORDER BY d.due_at ASC LIMIT 1`
+      ).get(sub.subscriber_id);
+      return { ...sub, next_dispatch: nextDispatch || null };
+    })
+  );
+
   res.json({ contact, attributes: attrs, sequences });
 });
 
@@ -70,6 +85,31 @@ router.post('/:phone/resume-sequence', async (req, res) => {
   const { sequenceId } = req.body || {};
   if (!sequenceId) return res.status(400).json({ error: 'sequenceId required' });
   res.json(await resumePhoneInSequence(sequenceId, req.params.phone));
+});
+
+router.post('/:phone/send-dispatch', async (req, res) => {
+  const { dispatchId } = req.body || {};
+  if (!dispatchId) return res.status(400).json({ error: 'dispatchId required' });
+
+  const dispatch = await db.prepare(
+    `SELECT d.*, q.graph_json
+     FROM sequence_dispatches d
+     JOIN sequence_queues q ON q.id = d.queue_id
+     WHERE d.id = $1`
+  ).get(dispatchId);
+
+  if (!dispatch) return res.status(404).json({ error: 'dispatch not found' });
+
+  try {
+    const graph = JSON.parse(dispatch.graph_json);
+    await runFlowGraph({ graph, phone: req.params.phone, vars: { phone: req.params.phone } });
+    await db.prepare(
+      'UPDATE sequence_dispatches SET status = $1, sent_at = $2 WHERE id = $3'
+    ).run('sent', Date.now(), dispatchId);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post('/:phone/attributes', async (req, res) => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Upload, Trash2, Users, Clock } from 'lucide-react';
+import { Plus, Upload, Trash2, Users, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PageHeader from '../components/PageHeader.jsx';
 import ContactPanel from '../components/ContactPanel.jsx';
@@ -8,8 +8,10 @@ import { api } from '../lib/api.js';
 export default function Contacts() {
   const [contacts, setContacts] = useState([]);
   const [form, setForm] = useState({ name: '', phone: '', tags: '' });
-  const [openPhone, setOpenPhone] = useState(null);
+  const [openIndex, setOpenIndex] = useState(null);
   const fileRef = useRef(null);
+
+  const openPhone = openIndex !== null ? (contacts[openIndex]?.jid || contacts[openIndex]?.phone) : null;
 
   const load = () => api.contacts.list().then(setContacts);
   useEffect(() => {
@@ -39,7 +41,11 @@ export default function Contacts() {
   const remove = async (id) => {
     await api.contacts.remove(id);
     setContacts((c) => c.filter((x) => x.id !== id));
+    setOpenIndex(null);
   };
+
+  const goNext = () => setOpenIndex((i) => Math.min(contacts.length - 1, i + 1));
+  const goPrev = () => setOpenIndex((i) => Math.max(0, i - 1));
 
   return (
     <>
@@ -109,11 +115,11 @@ export default function Contacts() {
                 </tr>
               </thead>
               <tbody>
-                {contacts.map((c) => (
+                {contacts.map((c, i) => (
                   <tr
                     key={c.id}
-                    className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
-                    onClick={() => setOpenPhone(c.jid || c.phone)}
+                    className={`border-t border-slate-100 hover:bg-slate-50 cursor-pointer ${openIndex === i ? 'bg-brand-50' : ''}`}
+                    onClick={() => setOpenIndex(i)}
                   >
                     <td className="px-4 py-3">
                       <div className="text-slate-800">
@@ -185,15 +191,35 @@ export default function Contacts() {
         </div>
       </div>
 
-      {/* Contact detail drawer */}
-      {openPhone && (
-        <div className="fixed inset-0 z-40 flex" onClick={() => setOpenPhone(null)}>
+      {/* Contact detail drawer with prev/next navigation */}
+      {openIndex !== null && openPhone && (
+        <div className="fixed inset-0 z-40 flex" onClick={() => setOpenIndex(null)}>
           <div className="flex-1 bg-black/30" />
           <div
-            className="w-[400px] bg-white shadow-2xl animate-slide-in"
+            className="w-[420px] bg-white shadow-2xl animate-slide-in flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <ContactPanel phone={openPhone} onClose={() => setOpenPhone(null)} variant="drawer" />
+            {/* Navigation bar */}
+            <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-sm">
+              <button
+                className="flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600"
+                onClick={goPrev}
+                disabled={openIndex === 0}
+              >
+                <ChevronLeft size={15} /> Prev
+              </button>
+              <span className="text-slate-500 text-xs">{openIndex + 1} / {contacts.length}</span>
+              <button
+                className="flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600"
+                onClick={goNext}
+                disabled={openIndex === contacts.length - 1}
+              >
+                Next <ChevronRight size={15} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ContactPanel phone={openPhone} onClose={() => setOpenIndex(null)} variant="drawer" />
+            </div>
           </div>
         </div>
       )}

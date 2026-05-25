@@ -12,6 +12,7 @@ import {
   BellRing,
   PauseCircle,
   PlayCircle,
+  SendHorizonal,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 
@@ -22,6 +23,17 @@ import { api } from '../lib/api.js';
  *
  * Works off the raw phone/JID as stored in the messages table.
  */
+function relativeTime(ts) {
+  const diff = Number(ts) - Date.now();
+  const abs = Math.abs(diff);
+  const past = diff < 0;
+  if (abs < 60000) return past ? 'just now' : 'in a moment';
+  if (abs < 3600000) { const m = Math.round(abs / 60000); return past ? `${m}m overdue` : `in ${m}m`; }
+  if (abs < 86400000) { const h = Math.round(abs / 3600000); return past ? `${h}h overdue` : `in ${h}h`; }
+  const d = Math.round(abs / 86400000);
+  return past ? `${d}d overdue` : `in ${d}d`;
+}
+
 export default function ContactPanel({ phone, onClose, variant = 'side' }) {
   const [info, setInfo] = useState(null);
   const [flows, setFlows] = useState([]);
@@ -91,6 +103,16 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
     try {
       await api.people.resumeSequence(phone, sequenceId);
       toast.success('Sequence resumed');
+      load();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const sendNow = async (dispatchId) => {
+    try {
+      await api.people.sendDispatch(phone, dispatchId);
+      toast.success('Sent!');
       load();
     } catch (e) {
       toast.error(e.message);
@@ -208,6 +230,27 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
                         </button>
                       )}
                     </div>
+                    {/* Next pending dispatch */}
+                    {sub?.next_dispatch && (status === 'active' || status === 'paused') && (
+                      <div className="mt-2 flex items-center justify-between gap-2 p-2 rounded bg-white border border-slate-200">
+                        <div className="min-w-0">
+                          <div className="text-[10px] text-slate-400">Next up</div>
+                          <div className="text-xs font-medium text-slate-700 truncate">{sub.next_dispatch.queue_name}</div>
+                          <div className={`text-[10px] ${sub.next_dispatch.due_at < Date.now() ? 'text-amber-600' : 'text-slate-400'}`}>
+                            {relativeTime(sub.next_dispatch.due_at)}
+                          </div>
+                        </div>
+                        {status === 'active' && (
+                          <button
+                            className="shrink-0 text-[11px] px-2 py-1 rounded bg-brand-600 text-white hover:bg-brand-700 flex items-center gap-1"
+                            onClick={() => sendNow(sub.next_dispatch.id)}
+                            title="Send this step now"
+                          >
+                            <SendHorizonal size={11} /> Send now
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {sub?.subscribed_at && (
                       <div className="text-[10px] text-slate-400 mt-1">
                         since {new Date(Number(sub.subscribed_at)).toLocaleDateString()}

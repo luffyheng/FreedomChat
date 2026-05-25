@@ -126,6 +126,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ sequenceId }),
       }),
+    sendDispatch: (phone, dispatchId) =>
+      req(`/api/people/${encodeURIComponent(phone)}/send-dispatch`, {
+        method: 'POST',
+        body: JSON.stringify({ dispatchId }),
+      }),
     setAttribute: (phone, key, value) =>
       req(`/api/people/${encodeURIComponent(phone)}/attributes`, {
         method: 'POST',
