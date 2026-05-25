@@ -357,7 +357,27 @@ export async function initWhatsApp() {
     }
   });
 
-  client.initialize();
+  client.initialize().catch((e) => {
+    const msg = e?.message || '';
+    if (
+      msg.includes('Execution context was destroyed') ||
+      msg.includes('navigation') ||
+      msg.includes('detached') ||
+      msg.includes('Target closed') ||
+      msg.includes('Session closed')
+    ) {
+      // WhatsApp navigated the page during init (normal after QR scan) — reconnect
+      console.log('[whatsapp] page navigated during init, reconnecting in 10s…');
+      client = null;
+      status = 'disconnected';
+      emit('wa:status', { status });
+      setTimeout(() => initWhatsApp().catch((err) => console.error('[whatsapp] reconnect failed:', err)), 10000);
+    } else {
+      console.error('[whatsapp] fatal init error:', msg);
+      // Let Docker restart the container
+      process.exit(1);
+    }
+  });
   return client;
 }
 
