@@ -13,6 +13,7 @@ import {
   PauseCircle,
   PlayCircle,
   SendHorizonal,
+  CheckCircle2,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 
@@ -198,6 +199,11 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
                       {status === 'paused' && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold shrink-0">Paused</span>
                       )}
+                      {status === 'completed' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 font-semibold shrink-0 flex items-center gap-0.5">
+                          <CheckCircle2 size={9} /> Done
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 flex-wrap">
                       {status === 'active' && (
@@ -242,7 +248,22 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
                           <BellRing size={11} /> Subscribe
                         </button>
                       )}
+                      {status === 'completed' && (
+                        <button
+                          className="text-[11px] px-2 py-1 rounded bg-brand-50 text-brand-700 hover:bg-brand-100 flex items-center gap-1"
+                          onClick={() => subscribe(s.id)}
+                          title="Re-subscribe to restart the sequence"
+                        >
+                          <BellRing size={11} /> Re-subscribe
+                        </button>
+                      )}
                     </div>
+                    {/* Completed note */}
+                    {status === 'completed' && (
+                      <div className="mt-2 text-[10px] text-sky-600 flex items-center gap-1">
+                        <CheckCircle2 size={10} /> All steps sent — sequence complete
+                      </div>
+                    )}
                     {/* Next pending dispatch */}
                     {sub?.next_dispatch && (status === 'active' || status === 'paused') && (
                       <div className="mt-2 p-2 rounded bg-white border border-slate-200">

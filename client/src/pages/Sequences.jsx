@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Zap, Trash2, Power, Users, Clock } from 'lucide-react';
+import { Plus, Zap, Trash2, Power, Users, Clock, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PageHeader from '../components/PageHeader.jsx';
 import { api } from '../lib/api.js';
@@ -73,6 +73,9 @@ export default function Sequences() {
                   <span className="flex items-center gap-1 text-green-600"><Users size={12} /> {s.subscriber_count} active</span>
                   {s.paused_count > 0 && (
                     <span className="flex items-center gap-1 text-amber-600"><Users size={12} /> {s.paused_count} paused</span>
+                  )}
+                  {s.completed_count > 0 && (
+                    <span className="flex items-center gap-1 text-sky-600"><CheckCircle2 size={12} /> {s.completed_count} done</span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-5">

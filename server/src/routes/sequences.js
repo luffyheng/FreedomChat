@@ -9,7 +9,8 @@ router.get('/', async (req, res) => {
     `SELECT s.*,
       (SELECT COUNT(*) FROM sequence_queues q WHERE q.sequence_id = s.id) as queue_count,
       (SELECT COUNT(*) FROM sequence_subscribers sub WHERE sub.sequence_id = s.id AND sub.status='active') as subscriber_count,
-      (SELECT COUNT(*) FROM sequence_subscribers sub WHERE sub.sequence_id = s.id AND sub.status='paused') as paused_count
+      (SELECT COUNT(*) FROM sequence_subscribers sub WHERE sub.sequence_id = s.id AND sub.status='paused') as paused_count,
+      (SELECT COUNT(*) FROM sequence_subscribers sub WHERE sub.sequence_id = s.id AND sub.status='completed') as completed_count
      FROM sequences s ORDER BY created_at DESC`
   ).all();
   res.json(rows);

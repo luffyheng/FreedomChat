@@ -115,6 +115,15 @@ router.post('/:phone/send-dispatch', async (req, res) => {
     await db.prepare(
       'UPDATE sequence_dispatches SET status = $1, sent_at = $2 WHERE id = $3'
     ).run('sent', Date.now(), dispatchId);
+    // Auto-complete subscription when no more pending dispatches remain
+    const remaining = await db.prepare(
+      "SELECT COUNT(*) as cnt FROM sequence_dispatches WHERE subscriber_id = $1 AND status = 'pending'"
+    ).get(dispatch.subscriber_id);
+    if (Number(remaining?.cnt ?? 0) === 0) {
+      await db.prepare(
+        "UPDATE sequence_subscribers SET status = 'completed' WHERE id = $1 AND status = 'active'"
+      ).run(dispatch.subscriber_id);
+    }
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

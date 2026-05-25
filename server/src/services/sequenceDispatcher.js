@@ -41,6 +41,15 @@ async function tick() {
       await db.prepare(
         'UPDATE sequence_dispatches SET status = $1, sent_at = $2 WHERE id = $3'
       ).run('sent', Date.now(), d.id);
+      // Auto-complete subscription when no more pending dispatches remain
+      const remaining = await db.prepare(
+        "SELECT COUNT(*) as cnt FROM sequence_dispatches WHERE subscriber_id = $1 AND status = 'pending'"
+      ).get(d.subscriber_id);
+      if (Number(remaining?.cnt ?? 0) === 0) {
+        await db.prepare(
+          "UPDATE sequence_subscribers SET status = 'completed' WHERE id = $1 AND status = 'active'"
+        ).run(d.subscriber_id);
+      }
     } catch (e) {
       await db.prepare(
         'UPDATE sequence_dispatches SET status = $1, error = $2 WHERE id = $3'
