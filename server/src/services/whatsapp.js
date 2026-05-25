@@ -46,8 +46,34 @@ export function setSocketIO(instance) { io = instance; }
 function emit(event, data) { if (io) io.emit(event, data); }
 export function getStatus() { return { status, qr: currentQr }; }
 
+// Auto-detect the Chromium/Chrome binary — checks env var first, then known paths.
+// This survives mismatches between the Render env var and the actual Docker image path.
+function findChromiumExecutable() {
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-unstable',
+  ].filter(Boolean);
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        console.log(`[whatsapp] Using browser executable: ${p}`);
+        return p;
+      }
+    } catch {}
+  }
+  console.log('[whatsapp] No browser found in known paths — letting puppeteer auto-detect');
+  return undefined;
+}
+
 export async function initWhatsApp() {
   if (client) return client;
+
+  const executablePath = findChromiumExecutable();
 
   client = new Client({
     authStrategy: new LocalAuth({
@@ -56,8 +82,7 @@ export async function initWhatsApp() {
     }),
     puppeteer: {
       headless: true,
-      // Use system Chromium when running inside Docker (set by Dockerfile ENV)
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      executablePath,
       args: [
         '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--disable-gpu',
