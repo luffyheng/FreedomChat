@@ -4,16 +4,17 @@ import toast from 'react-hot-toast';
 import PageHeader from '../components/PageHeader.jsx';
 import ContactPanel from '../components/ContactPanel.jsx';
 import { api } from '../lib/api.js';
+import pageCache from '../lib/pageCache.js';
 
 export default function Contacts() {
-  const [contacts, setContacts] = useState([]);
+  const [contacts, setContacts] = useState(pageCache.contacts ?? []);
   const [form, setForm] = useState({ name: '', phone: '', tags: '' });
   const [openIndex, setOpenIndex] = useState(null);
   const fileRef = useRef(null);
 
   const openPhone = openIndex !== null ? (contacts[openIndex]?.jid || contacts[openIndex]?.phone) : null;
 
-  const load = () => api.contacts.list().then(setContacts);
+  const load = () => api.contacts.list().then((data) => { pageCache.contacts = data; setContacts(data); });
   useEffect(() => {
     load();
   }, []);

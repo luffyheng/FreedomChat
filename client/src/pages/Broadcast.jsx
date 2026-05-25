@@ -11,6 +11,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import MediaField from '../components/MediaField.jsx';
 import { api } from '../lib/api.js';
 import { socket } from '../lib/socket.js';
+import pageCache from '../lib/pageCache.js';
 
 /* ══════════════════════════════════════════════════════════════════
    formatters
@@ -78,8 +79,8 @@ function todayStr() { return new Date().toISOString().slice(0, 10); }
 export default function Broadcast() {
   const [params] = useSearchParams();
   const presetListId = params.get('list') || '';
-  const [broadcasts, setBroadcasts] = useState([]);
-  const [lists, setLists] = useState([]);
+  const [broadcasts, setBroadcasts] = useState(pageCache.broadcasts ?? []);
+  const [lists, setLists] = useState(pageCache.broadcastLists ?? []);
   const [openId, setOpenId] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [waStatus, setWaStatus] = useState('idle');
@@ -96,11 +97,11 @@ export default function Broadcast() {
     phones: '',
   });
 
-  const load = () => api.broadcasts.list().then(setBroadcasts);
+  const load = () => api.broadcasts.list().then((data) => { pageCache.broadcasts = data; setBroadcasts(data); });
 
   useEffect(() => {
     load();
-    api.lists.list().then(setLists);
+    api.lists.list().then((data) => { pageCache.broadcastLists = data; setLists(data); });
     api.whatsapp.status().then(({ status }) => setWaStatus(status));
     const refresh = () => load();
     const onWaStatus = ({ status }) => setWaStatus(status);

@@ -4,15 +4,16 @@ import { Plus, Zap, Trash2, Power, Users, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PageHeader from '../components/PageHeader.jsx';
 import { api } from '../lib/api.js';
+import pageCache from '../lib/pageCache.js';
 
 export default function Sequences() {
-  const [list, setList] = useState([]);
+  const [list, setList] = useState(pageCache.sequences ?? []);
   const nav = useNavigate();
 
-  const load = () => api.sequences.list().then(setList);
+  const load = () => api.sequences.list().then((data) => { pageCache.sequences = data; setList(data); });
   useEffect(() => {
     load();
-    const t = setInterval(load, 5000); // auto-refresh so subscriber count stays fresh
+    const t = setInterval(load, 10000); // auto-refresh subscriber counts
     return () => clearInterval(t);
   }, []);
 

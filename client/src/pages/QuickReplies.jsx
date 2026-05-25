@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { api } from '../lib/api.js';
 import MediaField from '../components/MediaField.jsx';
+import pageCache from '../lib/pageCache.js';
 
 /* ─── constants ─────────────────────────────────────────────────────────── */
 const ITEM_TYPES = [
@@ -40,8 +41,8 @@ function initials(str) {
 
 /* ─── main component ─────────────────────────────────────────────────────── */
 export default function QuickReplies() {
-  const [replies, setReplies]           = useState([]);
-  const [repliesLoading, setRepliesLoading] = useState(true);
+  const [replies, setReplies]           = useState(pageCache.quickReplies ?? []);
+  const [repliesLoading, setRepliesLoading] = useState(!pageCache.quickReplies);
   const [mode, setMode]                 = useState('send');   // 'send' | 'manage'
   const [sheetQR, setSheetQR]           = useState(null);     // QR shown in bottom sheet
   const [editing, setEditing]           = useState(null);
@@ -55,8 +56,11 @@ export default function QuickReplies() {
   const doneTimer = useRef(null);
 
   const load = () => {
-    setRepliesLoading(true);
-    api.quickReplies.list().then(setReplies).finally(() => setRepliesLoading(false));
+    if (!pageCache.quickReplies) setRepliesLoading(true);
+    api.quickReplies.list().then((data) => {
+      pageCache.quickReplies = data;
+      setReplies(data);
+    }).finally(() => setRepliesLoading(false));
   };
   useEffect(() => { load(); }, []);
 

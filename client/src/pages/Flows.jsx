@@ -4,12 +4,13 @@ import { Plus, Workflow, Trash2, Power } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PageHeader from '../components/PageHeader.jsx';
 import { api } from '../lib/api.js';
+import pageCache from '../lib/pageCache.js';
 
 export default function Flows() {
-  const [flows, setFlows] = useState([]);
+  const [flows, setFlows] = useState(pageCache.flows ?? []);
   const nav = useNavigate();
 
-  const load = () => api.flows.list().then(setFlows);
+  const load = () => api.flows.list().then((data) => { pageCache.flows = data; setFlows(data); });
   useEffect(() => {
     load();
   }, []);
