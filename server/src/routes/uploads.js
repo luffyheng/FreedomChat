@@ -24,9 +24,10 @@ const router = Router();
 
 router.post('/', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file required' });
-  // Return a relative URL — the frontend's Vite dev proxy forwards /uploads/*
-  // to the backend. Works in production too when everything serves off one host.
-  const url = `/uploads/${req.file.filename}`;
+  // In production the frontend is on a different domain, so return the full URL.
+  // In dev (no BACKEND_URL set) fall back to a relative path for Vite proxy.
+  const backendUrl = process.env.BACKEND_URL || '';
+  const url = `${backendUrl}/uploads/${req.file.filename}`;
   res.json({
     url,
     filename: req.file.filename,

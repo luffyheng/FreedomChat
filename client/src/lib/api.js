@@ -154,7 +154,10 @@ export const api = {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('defaultCountryCode', defaultCountryCode);
-      const res = await fetch(`/api/lists/${id}/members/import`, { method: 'POST', credentials: 'include', body: fd });
+      const token = tokenStore.get();
+      const uploadHeaders = {};
+      if (token) uploadHeaders['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${base}/api/lists/${id}/members/import`, { method: 'POST', credentials: 'include', headers: uploadHeaders, body: fd });
       if (!res.ok) throw new Error('import failed');
       return res.json();
     },
@@ -163,7 +166,10 @@ export const api = {
     upload: async (file, onProgress) => {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch('/api/uploads', { method: 'POST', credentials: 'include', body: fd });
+      const token = tokenStore.get();
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${base}/api/uploads`, { method: 'POST', credentials: 'include', headers, body: fd });
       if (!res.ok) throw new Error('upload failed');
       return res.json();
     },
