@@ -13,22 +13,39 @@ router.get('/', async (req, res) => {
 
 router.get('/threads', async (req, res) => {
   const rows = await db.query(
-    `SELECT m.phone,
-            MAX(m.created_at) AS last_at,
-            (SELECT body       FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_body,
-            (SELECT direction  FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_direction,
-            (SELECT media_type FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_media_type,
-            (SELECT author_name FROM messages WHERE phone = m.phone ORDER BY created_at DESC LIMIT 1) AS last_author_name,
-            (SELECT COUNT(*) FROM messages WHERE phone = m.phone AND direction='in' AND COALESCE(read,0) = 0) AS unread,
-            c.name AS contact_name,
-            c.push_name AS push_name,
-            c.resolved_number AS resolved_number
-       FROM messages m
-       LEFT JOIN contacts c
-         ON c.jid = m.phone
-         OR c.phone = REPLACE(REPLACE(REPLACE(m.phone,'@c.us',''),'@lid',''),'@g.us','')
-      GROUP BY m.phone
-      ORDER BY last_at DESC
+    `WITH latest AS (
+       SELECT DISTINCT ON (phone)
+              phone,
+              created_at  AS last_at,
+              body        AS last_body,
+              direction   AS last_direction,
+              media_type  AS last_media_type,
+              author_name AS last_author_name
+         FROM messages
+        ORDER BY phone, created_at DESC
+     )
+     SELECT l.phone,
+            l.last_at,
+            l.last_body,
+            l.last_direction,
+            l.last_media_type,
+            l.last_author_name,
+            (SELECT COUNT(*) FROM messages
+              WHERE phone = l.phone AND direction='in' AND COALESCE(read,0) = 0) AS unread,
+            (SELECT name FROM contacts
+              WHERE jid = l.phone
+                 OR phone = REPLACE(REPLACE(REPLACE(l.phone,'@c.us',''),'@lid',''),'@g.us','')
+              LIMIT 1) AS contact_name,
+            (SELECT push_name FROM contacts
+              WHERE jid = l.phone
+                 OR phone = REPLACE(REPLACE(REPLACE(l.phone,'@c.us',''),'@lid',''),'@g.us','')
+              LIMIT 1) AS push_name,
+            (SELECT resolved_number FROM contacts
+              WHERE jid = l.phone
+                 OR phone = REPLACE(REPLACE(REPLACE(l.phone,'@c.us',''),'@lid',''),'@g.us','')
+              LIMIT 1) AS resolved_number
+       FROM latest l
+      ORDER BY l.last_at DESC
       LIMIT 500`
   );
   res.json(rows);
