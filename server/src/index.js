@@ -102,3 +102,16 @@ if (fs.existsSync(path.join(clientDist, 'index.html'))) {
 server.listen(PORT, () => {
   console.log(`[chatmamba] server listening on http://localhost:${PORT}`);
 });
+
+// Keep Render free tier alive — ping /api/health every 14 minutes to prevent spin-down
+if (process.env.NODE_ENV === 'production' && process.env.RENDER_EXTERNAL_URL) {
+  const keepAliveUrl = `${process.env.RENDER_EXTERNAL_URL}/api/health`;
+  setInterval(async () => {
+    try {
+      await fetch(keepAliveUrl);
+      console.log('[keepalive] pinged', keepAliveUrl);
+    } catch (e) {
+      console.warn('[keepalive] ping failed:', e.message);
+    }
+  }, 14 * 60 * 1000); // every 14 minutes
+}
