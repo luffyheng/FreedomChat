@@ -41,6 +41,7 @@ function initials(str) {
 /* ─── main component ─────────────────────────────────────────────────────── */
 export default function QuickReplies() {
   const [replies, setReplies]           = useState([]);
+  const [repliesLoading, setRepliesLoading] = useState(true);
   const [mode, setMode]                 = useState('send');   // 'send' | 'manage'
   const [sheetQR, setSheetQR]           = useState(null);     // QR shown in bottom sheet
   const [editing, setEditing]           = useState(null);
@@ -53,7 +54,10 @@ export default function QuickReplies() {
   const [sendPhone, setSendPhone]       = useState('');
   const doneTimer = useRef(null);
 
-  const load = () => api.quickReplies.list().then(setReplies);
+  const load = () => {
+    setRepliesLoading(true);
+    api.quickReplies.list().then(setReplies).finally(() => setRepliesLoading(false));
+  };
   useEffect(() => { load(); }, []);
 
   const loadThreads = useCallback(async () => {
@@ -189,9 +193,11 @@ export default function QuickReplies() {
         <div className="flex-1 p-3 space-y-2">
           {filteredReplies.length === 0 && replies.length === 0 && (
             <div className="bg-white rounded-2xl p-10 text-center mt-6 shadow-sm">
-              <Zap size={40} className="mx-auto mb-3" style={{ color: '#075e54' }} />
-              <div className="font-semibold text-gray-700 mb-1">No FAQs yet</div>
-              <div className="text-gray-400 text-sm mb-5">Create your first quick reply</div>
+              {repliesLoading
+                ? <Loader2 size={36} className="mx-auto mb-3 animate-spin text-gray-400" />
+                : <Zap size={40} className="mx-auto mb-3" style={{ color: '#075e54' }} />}
+              <div className="font-semibold text-gray-700 mb-1">{repliesLoading ? 'Loading…' : 'No FAQs yet'}</div>
+              <div className="text-gray-400 text-sm mb-5">{repliesLoading ? '' : 'Create your first quick reply'}</div>
               <button
                 onClick={() => setMode('manage')}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-medium"
@@ -281,9 +287,11 @@ export default function QuickReplies() {
       <div className="px-4 py-4 max-w-2xl mx-auto space-y-3">
         {replies.length === 0 && !editing && (
           <div className="surface px-8 py-14 text-center">
-            <Zap size={32} className="mx-auto text-ink-faint mb-3" />
-            <div className="text-ink-mute mb-4">No quick replies yet</div>
-            <button onClick={openNew} className="btn btn-sm"><Plus size={13} /> Create one</button>
+            {repliesLoading
+              ? <Loader2 size={28} className="mx-auto text-ink-faint mb-3 animate-spin" />
+              : <Zap size={32} className="mx-auto text-ink-faint mb-3" />}
+            <div className="text-ink-mute mb-4">{repliesLoading ? 'Loading…' : 'No quick replies yet'}</div>
+            {!repliesLoading && <button onClick={openNew} className="btn btn-sm"><Plus size={13} /> Create one</button>}
           </div>
         )}
 
