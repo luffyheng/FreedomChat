@@ -71,8 +71,31 @@ function findChromiumExecutable() {
   return undefined;
 }
 
+/** Delete stale Chromium lock files so a crashed container never blocks the next start */
+function cleanChromiumLocks() {
+  const sessionName = process.env.SESSION_NAME || 'freedomchat-default';
+  const dirs = [
+    path.resolve(`./data/wa-session/session-${sessionName}`),
+    path.resolve(`./data/wa-session/.wwebjs_auth/session-${sessionName}`),
+  ];
+  const lockFiles = ['SingletonLock', 'SingletonSocket', 'lockfile'];
+  for (const dir of dirs) {
+    for (const f of lockFiles) {
+      try { fs.rmSync(path.join(dir, f), { force: true }); } catch {}
+    }
+    // Remove all .org.chromium.* temp lock files
+    try {
+      fs.readdirSync(dir)
+        .filter((n) => n.startsWith('.org.chromium.') || n.startsWith('.com.google.'))
+        .forEach((n) => { try { fs.rmSync(path.join(dir, n), { force: true }); } catch {} });
+    } catch {}
+  }
+}
+
 export async function initWhatsApp() {
   if (client) return client;
+
+  cleanChromiumLocks();
 
   const executablePath = findChromiumExecutable();
 
