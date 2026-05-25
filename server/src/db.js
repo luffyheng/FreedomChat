@@ -37,9 +37,12 @@ function parseDbUrl(rawUrl) {
 
 export const pool = new Pool({
   ...parseDbUrl(process.env.DATABASE_URL),
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
+  max: 5,                              // Supabase session pooler works best with small pools
+  min: 1,                              // keep 1 connection warm — eliminates cold-start latency
+  idleTimeoutMillis: 60_000,           // hold idle connections longer to avoid reconnect overhead
+  connectionTimeoutMillis: 15_000,
+  keepAlive: true,                     // TCP keepalive prevents silent connection drops
+  keepAliveInitialDelayMillis: 10_000,
 });
 
 pool.on('error', (err) => {

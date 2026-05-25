@@ -1,7 +1,7 @@
 {
-  "name": "chatmamba-desktop",
+  "name": "freedomchat-desktop",
   "version": "1.0.0",
-  "description": "ChatMamba Desktop — all your WhatsApp chats in one native window",
+  "description": "FreedomChat Desktop — all your WhatsApp chats in one native window",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -10,7 +10,7 @@
   },
   "build": {
     "appId": "com.chatmamba.desktop",
-    "productName": "ChatMamba",
+    "productName": "FreedomChat",
     "directories": { "output": "dist" },
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],

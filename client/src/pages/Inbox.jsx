@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Search, Info, CheckCheck, RefreshCw, FileText, Image as ImageIcon, Video, Music, Zap, X, Users } from 'lucide-react';
+import { Send, Search, Info, CheckCheck, RefreshCw, FileText, Image as ImageIcon, Video, Music, Zap, X, Users, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api.js';
 import { socket } from '../lib/socket.js';
@@ -99,6 +99,7 @@ function isGroup(thread) {
 
 export default function Inbox() {
   const [threads, setThreads] = useState([]);
+  const [threadsLoading, setThreadsLoading] = useState(true);
   const [activePhone, setActivePhone] = useState(null);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
@@ -108,7 +109,10 @@ export default function Inbox() {
   const [quickReplies, setQuickReplies] = useState([]);
   const scrollRef = useRef(null);
 
-  const loadThreads = () => api.messages.threads().then(setThreads);
+  const loadThreads = () => {
+    setThreadsLoading(true);
+    return api.messages.threads().then(setThreads).finally(() => setThreadsLoading(false));
+  };
   const loadQR = () => api.quickReplies.list().then(setQuickReplies).catch(() => {});
   const loadMessages = (phone) =>
     api.messages.list(phone).then((m) => setMessages(m.slice().reverse()));
@@ -205,7 +209,12 @@ export default function Inbox() {
           </div>
         </div>
         <div className="flex-1 overflow-auto">
-          {filtered.length === 0 ? (
+          {threadsLoading ? (
+            <div className="p-10 text-center text-slate-400 text-sm flex flex-col items-center gap-2">
+              <Loader2 size={22} className="animate-spin" />
+              <span>Loading…</span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="p-10 text-center text-slate-400 text-sm">No conversations yet.</div>
           ) : (
             filtered.map((t) => {

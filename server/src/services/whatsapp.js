@@ -310,44 +310,52 @@ export async function initWhatsApp() {
       ).get(jid, body, since);
       if (dup) return;
 
-      // Quick reply trigger: digits optionally followed by #
-      const triggerMatch = trimmedBody.match(/^(\d+)#?$/);
-      if (triggerMatch && triggerMatch[1].length <= 10 && !msg.hasMedia) {
-        const digits = triggerMatch[1];
+      // Quick reply trigger — only fires when YOU send a message from your phone.
+      // Supports any trigger_code: keywords, symbols, English, Mandarin, digits.
+      // Multi-digit shortcut: "13" fires FAQ 1 then FAQ 3 (when no exact match found).
+      if (!msg.hasMedia && trimmedBody.length <= 50) {
+        const sendQrItems = async (qr, targetJid) => {
+          const items = await db.prepare(
+            'SELECT * FROM quick_reply_items WHERE quick_reply_id = $1 ORDER BY sort_order ASC'
+          ).all(qr.id);
+          const presenceSec = Number(qr.presence_seconds || 0);
+          if (presenceSec > 0 && items.length > 0) {
+            const presenceState = items[0].type === 'audio' ? 'recording' : 'composing';
+            await sendPresence(targetJid, presenceState, presenceSec * 1000);
+          }
+          for (const item of items) {
+            if (item.type === 'text') {
+              await sendText(targetJid, item.content || '');
+            } else {
+              await sendMedia(targetJid, { url: item.url, sendAudioAsVoice: item.type === 'audio' });
+            }
+            if (items.length > 1) await new Promise((r) => setTimeout(r, 600));
+          }
+        };
+
+        // Step 1: exact match (any text — keyword, Mandarin, symbol, digit string)
         const exactQr = await db.prepare(
           'SELECT * FROM quick_replies WHERE trigger_code = $1'
-        ).get(digits);
-        const codesToTry = exactQr ? [digits] : [...new Set(digits.split(''))];
-        let triggered = false;
-        for (const code of codesToTry) {
-          const qr = (exactQr && code === digits)
-            ? exactQr
-            : await db.prepare('SELECT * FROM quick_replies WHERE trigger_code = $1').get(code);
-          if (qr) {
-            triggered = true;
-            const items = await db.prepare(
-              'SELECT * FROM quick_reply_items WHERE quick_reply_id = $1 ORDER BY sort_order ASC'
-            ).all(qr.id);
-            try {
-              const presenceSec = Number(qr.presence_seconds || 0);
-              if (presenceSec > 0 && items.length > 0) {
-                const presenceState = items[0].type === 'audio' ? 'recording' : 'composing';
-                await sendPresence(jid, presenceState, presenceSec * 1000);
-              }
-              for (const item of items) {
-                if (item.type === 'text') {
-                  await sendText(jid, item.content || '');
-                } else {
-                  await sendMedia(jid, { url: item.url, sendAudioAsVoice: item.type === 'audio' });
-                }
-                if (items.length > 1) await new Promise((r) => setTimeout(r, 600));
-              }
-            } catch (e) {
-              console.error('[quick-reply] send error:', e.message);
+        ).get(trimmedBody);
+        if (exactQr) {
+          try { await sendQrItems(exactQr, jid); } catch (e) { console.error('[quick-reply] send error:', e.message); }
+          return; // don't log trigger as a message
+        }
+
+        // Step 2: multi-digit combo shortcut (e.g. "13" → send FAQ "1" then FAQ "3")
+        const digitMatch = trimmedBody.match(/^(\d{2,5})$/);
+        if (digitMatch) {
+          const codes = [...new Set(trimmedBody.split(''))];
+          let triggered = false;
+          for (const code of codes) {
+            const qr = await db.prepare('SELECT * FROM quick_replies WHERE trigger_code = $1').get(code);
+            if (qr) {
+              triggered = true;
+              try { await sendQrItems(qr, jid); } catch (e) { console.error('[quick-reply] send error:', e.message); }
             }
           }
+          if (triggered) return;
         }
-        if (triggered) return;
       }
 
       let mediaUrl = null;

@@ -1,0 +1,41 @@
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_HOST }}
+          username: ${{ secrets.GCP_USER }}
+          key: ${{ secrets.GCP_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/FreedomChat
+            git pull origin master
+            cd server
+            docker build -t freedomchat .
+            docker rm -f freedomchat || true
+            docker run -d \
+              --name freedomchat \
+              --restart unless-stopped \
+              -p 4000:4000 \
+              -v ~/data:/app/data \
+              -e NODE_ENV=production \
+              -e BACKEND_URL=https://api.ayadvisorysolution.com \
+              -e "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+              -e "ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}" \
+              -e "ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}" \
+              -e SESSION_NAME=freedomchat-default \
+              -e "CLIENT_ORIGINS=${{ secrets.CLIENT_ORIGINS }}" \
+              freedomchat
+            echo "Deploy complete"

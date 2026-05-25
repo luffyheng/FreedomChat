@@ -2,7 +2,7 @@ const { app, BrowserWindow, BrowserView, Menu, shell, ipcMain } = require('elect
 const path = require('path');
 
 // ── Config ────────────────────────────────────────────────────────────────
-const CHATMAMBA_URL  = 'https://blast.ayadvisorysolution.com';
+const CHATMAMBA_URL  = 'https://freedomchat-ca10b.web.app';
 const CM_PANEL_WIDTH = 400; // px — ChatMamba panel on the right
 
 // Real Chrome UA so WhatsApp Web doesn't complain
@@ -35,7 +35,7 @@ function createWindow() {
     height:   900,
     minWidth: 900,
     minHeight: 600,
-    title: 'ChatMamba',
+    title: 'FreedomChat',
     backgroundColor: '#111b21', // WA dark bg while loading
     // icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
