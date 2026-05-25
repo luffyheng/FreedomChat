@@ -75,6 +75,7 @@ router.post('/:id/queues', async (req, res) => {
   }
 
   res.json({ id });
+});
 
 router.put('/queues/:queueId', async (req, res) => {
   const { name, delay_ms, graph, position } = req.body || {};
