@@ -116,7 +116,7 @@ export default function QuickReplies() {
   const closeEdit = () => setEditing(null);
 
   const save = async () => {
-    const { id, name, trigger_code, presence_seconds, items } = editing;
+    const { id, name, trigger_code, presence_seconds, gap_seconds, items } = editing;
     if (!name.trim()) { toast.error('Name required'); return; }
     const validItems = items.filter((it) => it.type === 'text' ? it.content?.trim() : it.url?.trim());
     if (!validItems.length) { toast.error('Add at least one item with content'); return; }
