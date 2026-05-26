@@ -28,6 +28,7 @@ import quickRepliesRouter from './routes/quickReplies.js';
 import { startBroadcastScheduler } from './services/broadcast.js';
 import { initWhatsApp, setSocketIO, getStatus } from './services/whatsapp.js';
 import { startSequenceDispatcher } from './services/sequenceDispatcher.js';
+import db from './db.js';
 
 const PORT = process.env.PORT || 4000;
 
@@ -61,6 +62,10 @@ io.on('connection', (socket) => {
 });
 
 seedAdminUser().catch((e) => console.error('[auth] seed failed:', e));
+
+// Schema migrations — idempotent, safe to run on every boot
+db.exec('ALTER TABLE quick_replies ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0')
+  .catch((e) => console.warn('[migration] quick_replies.sort_order:', e.message));
 
 // Auto-start WhatsApp on boot — reuses saved session files if they exist (no QR needed)
 initWhatsApp().catch(e => console.error('[whatsapp] auto-start failed:', e));

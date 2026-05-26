@@ -9,7 +9,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // GET /api/quick-replies — list all with items
 router.get('/', async (req, res) => {
   const [rows, items] = await Promise.all([
-    db.prepare('SELECT * FROM quick_replies ORDER BY created_at ASC').all(),
+    db.prepare('SELECT * FROM quick_replies ORDER BY COALESCE(sort_order, 0) ASC, created_at ASC').all(),
     db.prepare('SELECT * FROM quick_reply_items ORDER BY sort_order ASC').all(),
   ]);
   const itemsByQr = {};
@@ -51,6 +51,17 @@ router.post('/', async (req, res) => {
     db.prepare('SELECT * FROM quick_reply_items WHERE quick_reply_id = $1 ORDER BY sort_order').all(id),
   ]);
   res.json({ ...created, items: createdItems });
+});
+
+// PUT /api/quick-replies/reorder — save display order
+// Body: { ids: ['id1', 'id2', 'id3'] }
+router.put('/reorder', async (req, res) => {
+  const { ids } = req.body || {};
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
+  for (let i = 0; i < ids.length; i++) {
+    await db.prepare('UPDATE quick_replies SET sort_order = $1 WHERE id = $2').run(i, ids[i]);
+  }
+  res.json({ ok: true });
 });
 
 // PUT /api/quick-replies/:id — update

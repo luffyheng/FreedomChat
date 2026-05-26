@@ -195,6 +195,7 @@ export const api = {
     update: (id, data) => req(`/api/quick-replies/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     remove: (id) => req(`/api/quick-replies/${id}`, { method: 'DELETE' }),
     send: (id, phone) => req(`/api/quick-replies/${id}/send`, { method: 'POST', body: JSON.stringify({ phone }) }),
+    reorder: (ids) => req('/api/quick-replies/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }),
   },
   attributes: {
     list: (phone) => req(`/api/attributes/${encodeURIComponent(phone)}`),

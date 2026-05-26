@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Plus, Trash2, Edit2, X, Save, Zap, Type, Mic, Image as ImageIcon,
   Video, FileText, GripVertical, ChevronDown, ChevronUp, Send, Clock,
-  Search, Loader2, CheckCircle2, Settings, ChevronRight, ArrowLeft,
+  Search, Loader2, CheckCircle2, Settings, ChevronRight, ArrowLeft, Check,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -43,7 +43,9 @@ function initials(str) {
 export default function QuickReplies() {
   const [replies, setReplies]           = useState(pageCache.quickReplies ?? []);
   const [repliesLoading, setRepliesLoading] = useState(!pageCache.quickReplies);
-  const [mode, setMode]                 = useState('send');   // 'send' | 'manage'
+  const [mode, setMode]                 = useState('send');   // 'send' | 'manage' | 'reorder'
+  const [reorderList, setReorderList]   = useState([]);       // working copy during reorder
+  const [reorderSaving, setReorderSaving] = useState(false);
   const [sheetQR, setSheetQR]           = useState(null);     // QR shown in bottom sheet
   const [editing, setEditing]           = useState(null);
   const [faqSearch, setFaqSearch]       = useState('');
@@ -137,6 +139,27 @@ export default function QuickReplies() {
     await api.quickReplies.remove(id); load();
   };
 
+  /* reorder --------------------------------------------------------------- */
+  const openReorder = () => { setReorderList([...replies]); setMode('reorder'); };
+  const moveReorder = (idx, dir) => setReorderList((prev) => {
+    const list = prev.slice(); const to = idx + dir;
+    if (to < 0 || to >= list.length) return prev;
+    [list[idx], list[to]] = [list[to], list[idx]];
+    return list;
+  });
+  const saveReorder = async () => {
+    setReorderSaving(true);
+    try {
+      await api.quickReplies.reorder(reorderList.map((r) => r.id));
+      pageCache.quickReplies = reorderList;
+      setReplies(reorderList);
+      setMode('send');
+      toast.success('Order saved');
+    } catch (e) {
+      toast.error(e.message);
+    } finally { setReorderSaving(false); }
+  };
+
   const setItem    = (idx, patch) => setEditing((p) => { const items = p.items.slice(); items[idx] = { ...items[idx], ...patch }; return { ...p, items }; });
   const addItem    = () => setEditing((p) => ({ ...p, items: [...p.items, emptyItem()] }));
   const removeItem = (idx) => setEditing((p) => ({ ...p, items: p.items.filter((_, i) => i !== idx) }));
@@ -160,6 +183,113 @@ export default function QuickReplies() {
   });
 
   /* ══════════════════════════════════════════════════════════════════════════
+     REORDER MODE — drag FAQs up / down, tap Done to save
+  ══════════════════════════════════════════════════════════════════════════ */
+  if (mode === 'reorder') {
+    return (
+      <div className="min-h-full flex flex-col" style={{ background: '#f0f2f5' }}>
+        {/* Header */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between" style={{ background: '#075e54' }}>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMode('send')}
+              className="p-2 rounded-full hover:bg-white/10 transition-colors"
+              title="Cancel"
+            >
+              <X size={20} className="text-white" />
+            </button>
+            <div>
+              <div className="font-bold text-[17px] text-white">Reorder FAQs</div>
+              <div className="text-[12px] text-white/60">Use arrows to rearrange</div>
+            </div>
+          </div>
+          <button
+            onClick={saveReorder}
+            disabled={reorderSaving}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors text-white font-semibold text-[14px] disabled:opacity-50"
+            title="Save order"
+          >
+            {reorderSaving
+              ? <Loader2 size={16} className="animate-spin" />
+              : <Check size={16} />}
+            Done
+          </button>
+        </div>
+
+        {/* Reorder list */}
+        <div className="flex-1 p-3 space-y-2">
+          {reorderList.map((r, idx) => (
+            <div
+              key={r.id}
+              className="w-full bg-white rounded-2xl px-4 py-4 flex items-center gap-3.5 shadow-sm"
+            >
+              {/* Up/Down buttons */}
+              <div className="flex flex-col gap-0.5 shrink-0">
+                <button
+                  onClick={() => moveReorder(idx, -1)}
+                  disabled={idx === 0}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-20 transition-colors"
+                >
+                  <ChevronUp size={18} className="text-gray-500" />
+                </button>
+                <button
+                  onClick={() => moveReorder(idx, 1)}
+                  disabled={idx === reorderList.length - 1}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-20 transition-colors"
+                >
+                  <ChevronDown size={18} className="text-gray-500" />
+                </button>
+              </div>
+
+              {/* Trigger badge */}
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold text-[16px]"
+                style={{ background: '#e9f5f1', color: '#075e54' }}
+              >
+                {r.trigger_code || <Zap size={20} style={{ color: '#075e54' }} />}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-800 text-[15px] truncate">{r.name}</div>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  {(r.items || []).map((it, i) => {
+                    const T = typeFor(it.type);
+                    return (
+                      <span key={i} className={clsx('flex items-center gap-0.5 text-[12px]', T.color)}>
+                        <T.icon size={11} />
+                        <span className="text-gray-400">{T.label}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Position indicator */}
+              <div className="text-[13px] font-bold shrink-0" style={{ color: '#075e54' }}>
+                #{idx + 1}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Save footer */}
+        <div className="sticky bottom-0 px-4 py-4 bg-white border-t border-gray-100 shadow-lg">
+          <button
+            onClick={saveReorder}
+            disabled={reorderSaving}
+            className="w-full py-3.5 rounded-2xl text-white font-semibold text-[16px] flex items-center justify-center gap-2 disabled:opacity-50 transition-opacity"
+            style={{ background: '#075e54' }}
+          >
+            {reorderSaving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+            Save order
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
      SEND MODE — mobile-first big buttons
   ══════════════════════════════════════════════════════════════════════════ */
   if (mode === 'send') {
@@ -172,9 +302,9 @@ export default function QuickReplies() {
             <div className="text-[12px] text-white/60">{replies.length} FAQ{replies.length !== 1 ? 's' : ''} ready</div>
           </div>
           <button
-            onClick={() => setMode('manage')}
+            onClick={openReorder}
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
-            title="Manage FAQs"
+            title="Reorder FAQs"
           >
             <Settings size={21} className="text-white" />
           </button>
