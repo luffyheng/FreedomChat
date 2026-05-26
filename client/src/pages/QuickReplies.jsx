@@ -301,13 +301,22 @@ export default function QuickReplies() {
             <div className="font-bold text-[17px] text-white">Quick Send</div>
             <div className="text-[12px] text-white/60">{replies.length} FAQ{replies.length !== 1 ? 's' : ''} ready</div>
           </div>
-          <button
-            onClick={openReorder}
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
-            title="Reorder FAQs"
-          >
-            <Settings size={21} className="text-white" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { openNew(); setMode('manage'); }}
+              className="p-2 rounded-full hover:bg-white/10 transition-colors"
+              title="Add new FAQ"
+            >
+              <Plus size={21} className="text-white" />
+            </button>
+            <button
+              onClick={openReorder}
+              className="p-2 rounded-full hover:bg-white/10 transition-colors"
+              title="Reorder FAQs"
+            >
+              <Settings size={21} className="text-white" />
+            </button>
+          </div>
         </div>
 
         {/* Search bar */}
@@ -333,7 +342,7 @@ export default function QuickReplies() {
               <div className="font-semibold text-gray-700 mb-1">{repliesLoading ? 'Loading…' : 'No FAQs yet'}</div>
               <div className="text-gray-400 text-sm mb-5">{repliesLoading ? '' : 'Create your first quick reply'}</div>
               <button
-                onClick={() => setMode('manage')}
+                onClick={() => { openNew(); setMode('manage'); }}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-medium"
                 style={{ background: '#075e54' }}
               >
@@ -343,42 +352,66 @@ export default function QuickReplies() {
           )}
 
           {filteredReplies.map((r) => (
-            <button
+            <div
               key={r.id}
-              onClick={() => openSheet(r)}
-              className="w-full bg-white rounded-2xl px-4 py-4 flex items-center gap-3.5 text-left shadow-sm active:scale-[0.985] transition-transform"
+              className="bg-white rounded-2xl shadow-sm flex items-stretch overflow-hidden"
             >
-              {/* Trigger badge / icon */}
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold text-[16px]"
-                style={{ background: '#e9f5f1', color: '#075e54' }}
+              {/* ── Send area (tap to pick contact) ── */}
+              <button
+                onClick={() => openSheet(r)}
+                className="flex-1 px-4 py-4 flex items-center gap-3.5 text-left active:bg-gray-50 transition-colors min-w-0"
               >
-                {r.trigger_code || <Zap size={20} style={{ color: '#075e54' }} />}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-800 text-[15px] truncate">{r.name}</div>
-                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  {(r.items || []).map((it, i) => {
-                    const T = typeFor(it.type);
-                    return (
-                      <span key={i} className={clsx('flex items-center gap-0.5 text-[12px]', T.color)}>
-                        <T.icon size={11} />
-                        <span className="text-gray-400">{T.label}</span>
-                      </span>
-                    );
-                  })}
-                  {r.presence_seconds > 0 && (
-                    <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
-                      <Clock size={10} /> {r.presence_seconds}s
-                    </span>
-                  )}
+                {/* Trigger badge */}
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold text-[16px]"
+                  style={{ background: '#e9f5f1', color: '#075e54' }}
+                >
+                  {r.trigger_code || <Zap size={20} style={{ color: '#075e54' }} />}
                 </div>
-              </div>
 
-              <ChevronRight size={20} className="text-gray-300 shrink-0" />
-            </button>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-800 text-[15px] truncate">{r.name}</div>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    {(r.items || []).map((it, i) => {
+                      const T = typeFor(it.type);
+                      return (
+                        <span key={i} className={clsx('flex items-center gap-0.5 text-[12px]', T.color)}>
+                          <T.icon size={11} />
+                          <span className="text-gray-400">{T.label}</span>
+                        </span>
+                      );
+                    })}
+                    {r.presence_seconds > 0 && (
+                      <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                        <Clock size={10} /> {r.presence_seconds}s
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <ChevronRight size={18} className="text-gray-300 shrink-0" />
+              </button>
+
+              {/* ── Action buttons ── */}
+              <div className="flex flex-col border-l border-gray-100 shrink-0">
+                <button
+                  onClick={() => { openEdit(r); setMode('manage'); }}
+                  className="flex-1 w-12 flex items-center justify-center hover:bg-blue-50 active:bg-blue-100 transition-colors"
+                  title="Edit"
+                >
+                  <Edit2 size={15} className="text-blue-500" />
+                </button>
+                <div className="h-px bg-gray-100" />
+                <button
+                  onClick={() => remove(r.id)}
+                  className="flex-1 w-12 flex items-center justify-center hover:bg-red-50 active:bg-red-100 transition-colors"
+                  title="Delete"
+                >
+                  <Trash2 size={15} className="text-red-400" />
+                </button>
+              </div>
+            </div>
           ))}
         </div>
 
