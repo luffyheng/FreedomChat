@@ -141,36 +141,43 @@ function Builder() {
     setSelectedId(null);
   };
 
-  const save = async () => {
-    await api.flows.update(id, {
+  const save = () => {
+    toast.success('Flow saved');
+    api.flows.update(id, {
       name: flow.name,
       description: flow.description,
       enabled: flow.enabled,
       graph: { nodes, edges },
-    });
-    toast.success('Flow saved');
+    }).catch((e) => toast.error(`Save failed: ${e.message}`));
   };
 
   const addTrigger = async () => {
     const value = prompt('Keyword to match (leave empty for "any message"):') ?? '';
     const type = value ? 'keyword' : 'any';
-    await api.flows.addTrigger(id, { type, value, match_mode: 'contains' });
-    api.flows.get(id).then((f) => setTriggers(f.triggers));
+    // Optimistic: append a temp trigger immediately
+    const temp = { id: `temp-${Date.now()}`, type, value, match_mode: 'contains' };
+    setTriggers((t) => [...t, temp]);
+    api.flows.addTrigger(id, { type, value, match_mode: 'contains' })
+      .then(() => api.flows.get(id).then((f) => setTriggers(f.triggers)))
+      .catch((e) => {
+        toast.error(e.message);
+        setTriggers((t) => t.filter((x) => x.id !== temp.id));
+      });
   };
 
-  const removeTrigger = async (triggerId) => {
-    await api.flows.removeTrigger(triggerId);
+  const removeTrigger = (triggerId) => {
+    const backup = triggers;
     setTriggers((t) => t.filter((x) => x.id !== triggerId));
+    api.flows.removeTrigger(triggerId).catch((e) => {
+      toast.error(e.message);
+      setTriggers(backup);
+    });
   };
 
-  const runTest = async () => {
+  const runTest = () => {
     if (!testPhone) return toast.error('Enter a phone number first');
-    try {
-      await api.flows.test(id, testPhone);
-      toast.success('Flow dispatched to ' + testPhone);
-    } catch (e) {
-      toast.error(e.message);
-    }
+    toast.success('Flow dispatched to ' + testPhone);
+    api.flows.test(id, testPhone).catch((e) => toast.error(e.message));
   };
 
   if (!flow) return <div className="p-10 text-slate-500">Loading…</div>;

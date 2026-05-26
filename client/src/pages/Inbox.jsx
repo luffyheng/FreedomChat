@@ -152,31 +152,40 @@ export default function Inbox() {
 
   const active = threads.find((t) => t.phone === activePhone);
 
-  const send = async (e) => {
+  const send = (e) => {
     e.preventDefault();
     if (!activePhone || !draft.trim()) return;
-    try {
-      await api.whatsapp.send(activePhone, draft);
-      setDraft('');
+    const body = draft;
+    const phone = activePhone;
+    // Optimistic: append message immediately + clear draft
+    const tempMsg = {
+      id: `temp-${Date.now()}`,
+      direction: 'out',
+      body,
+      created_at: Date.now(),
+    };
+    setMessages((m) => [...m, tempMsg]);
+    setDraft('');
+    api.whatsapp.send(phone, body).then(() => {
       loadThreads();
-      loadMessages(activePhone);
-    } catch (err) {
+      loadMessages(phone);
+    }).catch((err) => {
       toast.error(err.message);
-    }
+      setMessages((m) => m.filter((x) => x.id !== tempMsg.id));
+    });
   };
 
-  const sendQuickReply = async (qrId) => {
+  const sendQuickReply = (qrId) => {
     if (!activePhone) return;
+    const phone = activePhone;
     setShowQR(false);
-    try {
-      const r = await api.quickReplies.send(qrId, activePhone);
-      toast.success(`Sent ${r.sent} item${r.sent === 1 ? '' : 's'}`);
-      // Force reload — don't rely on socket timing after multi-item sends
+    toast.success('Sending quick reply…');
+    api.quickReplies.send(qrId, phone).then(() => {
       loadThreads();
-      loadMessages(activePhone);
-    } catch (err) {
+      loadMessages(phone);
+    }).catch((err) => {
       toast.error(err.message);
-    }
+    });
   };
 
   return (

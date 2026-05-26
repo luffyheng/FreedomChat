@@ -88,14 +88,12 @@ export default function SequenceDetail() {
     await api.sequences.update(id, { name });
   };
 
-  const testSubscribe = async () => {
+  const testSubscribe = () => {
     if (!testPhone) return toast.error('Enter a phone first');
-    try {
-      await api.sequences.subscribe(id, testPhone.replace(/[^\d]/g, ''));
-      toast.success('Subscribed — queues scheduled');
-    } catch (e) {
+    toast.success('Subscribed — queues scheduled');
+    api.sequences.subscribe(id, testPhone.replace(/[^\d]/g, '')).catch((e) => {
       toast.error(e.message);
-    }
+    });
   };
 
   if (!seq) return <div className="p-10 text-slate-500">Loading…</div>;
@@ -251,35 +249,33 @@ function QueueCard({ queue, index, onChange }) {
   );
   const [mediaUrl, setMediaUrl] = useState(mediaNode?.data?.url || '');
   const [mediaKind, setMediaKind] = useState(mediaNode?.type || 'sendImage');
-  const [saving, setSaving] = useState(false);
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      const nodes = [];
-      if (mediaUrl) {
-        nodes.push({
-          id: 'media', type: mediaKind,
-          position: { x: 80, y: 20 },
-          data: { url: mediaUrl, caption: text },
-        });
-      } else if (text) {
-        nodes.push({ id: 'msg', type: 'sendText', position: { x: 80, y: 80 }, data: { text } });
-      }
-      await api.sequences.updateQueue(queue.id, { name, delay_ms: dhmsToMs(delay), graph: { nodes, edges: [] } });
-      toast.success('Saved');
-      onChange?.();
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setSaving(false);
+  const save = () => {
+    const nodes = [];
+    if (mediaUrl) {
+      nodes.push({
+        id: 'media', type: mediaKind,
+        position: { x: 80, y: 20 },
+        data: { url: mediaUrl, caption: text },
+      });
+    } else if (text) {
+      nodes.push({ id: 'msg', type: 'sendText', position: { x: 80, y: 80 }, data: { text } });
     }
+    // Optimistic: show "Saved" instantly, API in background
+    toast.success('Saved');
+    api.sequences.updateQueue(queue.id, { name, delay_ms: dhmsToMs(delay), graph: { nodes, edges: [] } })
+      .then(() => onChange?.())
+      .catch((e) => toast.error(`Save failed: ${e.message}`));
   };
 
-  const remove = async () => {
+  const remove = () => {
     if (!confirm('Delete this step?')) return;
-    await api.sequences.removeQueue(queue.id);
-    onChange?.();
+    // Optimistic: parent reloads after API completes; but trigger UI fade via onChange
+    api.sequences.removeQueue(queue.id).then(() => onChange?.()).catch((e) => {
+      toast.error(e.message);
+      onChange?.();
+    });
+    onChange?.(); // trigger parent refresh instantly (it will refetch)
   };
 
   return (
@@ -305,8 +301,8 @@ function QueueCard({ queue, index, onChange }) {
           <button className="btn-ghost text-red-600 !px-1.5 !py-1" onClick={remove} title="Delete">
             <Trash2 size={13} />
           </button>
-          <button className="btn-primary !px-2 !py-1 text-xs" onClick={save} disabled={saving}>
-            <Save size={12} /> {saving ? '…' : 'Save'}
+          <button className="btn-primary !px-2 !py-1 text-xs" onClick={save}>
+            <Save size={12} /> Save
           </button>
           <span className="text-slate-400 ml-1">
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

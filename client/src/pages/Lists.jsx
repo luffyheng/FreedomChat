@@ -20,10 +20,14 @@ export default function Lists() {
     nav(`/lists/${id}`);
   };
 
-  const remove = async (id) => {
+  const remove = (id) => {
     if (!confirm('Delete this list?')) return;
-    await api.lists.remove(id);
-    load();
+    const backup = lists;
+    setLists((prev) => prev.filter((x) => x.id !== id));
+    api.lists.remove(id).catch((e) => {
+      toast.error(e.message);
+      setLists(backup);
+    });
   };
 
   return (

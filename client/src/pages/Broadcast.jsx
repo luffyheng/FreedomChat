@@ -167,32 +167,40 @@ export default function Broadcast() {
     }
   };
 
-  const start  = async (id) => {
+  const start = (id) => {
     if (waStatus !== 'ready') {
       toast.error('WhatsApp not connected — go to Connect page first.');
       return;
     }
-    try {
-      await api.broadcasts.start(id);
-      toast.success('Transmission started');
-    } catch (err) {
+    // Optimistic: flip status to running locally
+    setBroadcasts((prev) => prev.map((b) => b.id === id ? { ...b, status: 'running' } : b));
+    toast.success('Transmission started');
+    api.broadcasts.start(id).catch((err) => {
       toast.error(err.message);
-    }
+      load(); // revert
+    });
   };
-  const pause   = async (id) => { await api.broadcasts.pause(id); };
-  const sendNow = async (id) => {
-    try {
-      await api.broadcasts.sendNow(id);
-      toast.success('Sending next contact now…');
-    } catch (err) {
+  const pause = (id) => {
+    setBroadcasts((prev) => prev.map((b) => b.id === id ? { ...b, status: 'paused' } : b));
+    api.broadcasts.pause(id).catch((err) => {
       toast.error(err.message);
-    }
+      load();
+    });
   };
-  const remove = async (id) => {
+  const sendNow = (id) => {
+    toast.success('Sending next contact now…');
+    api.broadcasts.sendNow(id).catch((err) => toast.error(err.message));
+  };
+  const remove = (id) => {
     if (!confirm('Delete this dispatch? This cannot be undone.')) return;
-    await api.broadcasts.remove(id);
+    // Optimistic: remove from list and close panel instantly
+    const backup = broadcasts;
+    setBroadcasts((prev) => prev.filter((b) => b.id !== id));
     if (openId === id) setOpenId(null);
-    load();
+    api.broadcasts.remove(id).catch((err) => {
+      toast.error(err.message);
+      setBroadcasts(backup);
+    });
   };
 
   // Split for sections

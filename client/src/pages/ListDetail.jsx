@@ -19,20 +19,41 @@ export default function ListDetail() {
     load();
   }, [id]);
 
-  const add = async (e) => {
+  const add = (e) => {
     e.preventDefault();
-    try {
-      await api.lists.addMember(id, form);
-      setForm({ phone: '', name: '' });
-      load();
-    } catch (err) {
+    const payload = { ...form };
+    // Optimistic: append a temp member and clear form
+    const tempMember = {
+      id: `temp-${Date.now()}`,
+      phone: payload.phone,
+      name: payload.name,
+    };
+    setList((prev) => prev ? {
+      ...prev,
+      members: [tempMember, ...prev.members],
+      member_count: prev.member_count + 1,
+    } : prev);
+    setForm({ phone: '', name: '' });
+    api.lists.addMember(id, payload).then(load).catch((err) => {
       toast.error(err.message);
-    }
+      setList((prev) => prev ? {
+        ...prev,
+        members: prev.members.filter((m) => m.id !== tempMember.id),
+        member_count: prev.member_count - 1,
+      } : prev);
+    });
   };
 
-  const removeMember = async (memberId) => {
-    await api.lists.removeMember(id, memberId);
-    load();
+  const removeMember = (memberId) => {
+    setList((prev) => prev ? {
+      ...prev,
+      members: prev.members.filter((m) => m.id !== memberId),
+      member_count: Math.max(0, prev.member_count - 1),
+    } : prev);
+    api.lists.removeMember(id, memberId).catch((e) => {
+      toast.error(e.message);
+      load();
+    });
   };
 
   const onUpload = async (e) => {

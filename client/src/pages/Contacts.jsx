@@ -31,15 +31,23 @@ export default function Contacts() {
     load();
   }, []);
 
-  const add = async (e) => {
+  const add = (e) => {
     e.preventDefault();
-    try {
-      await api.contacts.create(form);
-      setForm({ name: '', phone: '', tags: '' });
-      load();
-    } catch (err) {
+    // Optimistic: add a temp row instantly and clear form; reconcile via load()
+    const payload = { ...form };
+    const tempContact = {
+      id: `temp-${Date.now()}`,
+      name: payload.name,
+      phone: payload.phone.replace(/[^\d]/g, ''),
+      tags: payload.tags,
+      created_at: Date.now(),
+    };
+    setContacts((c) => [tempContact, ...c]);
+    setForm({ name: '', phone: '', tags: '' });
+    api.contacts.create(payload).then(load).catch((err) => {
       toast.error(err.message);
-    }
+      setContacts((c) => c.filter((x) => x.id !== tempContact.id));
+    });
   };
 
   const onUpload = async (e) => {
@@ -51,10 +59,14 @@ export default function Contacts() {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const remove = async (id) => {
-    await api.contacts.remove(id);
+  const remove = (id) => {
+    const backup = contacts;
     setContacts((c) => c.filter((x) => x.id !== id));
     setOpenIndex(null);
+    api.contacts.remove(id).catch((err) => {
+      toast.error(err.message);
+      setContacts(backup);
+    });
   };
 
   const goNext = () => setOpenIndex((i) => Math.min(filtered.length - 1, i + 1));

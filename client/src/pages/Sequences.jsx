@@ -23,15 +23,25 @@ export default function Sequences() {
     nav(`/sequences/${id}`);
   };
 
-  const toggle = async (s) => {
-    await api.sequences.update(s.id, { enabled: s.enabled ? 0 : 1 });
-    load();
+  const toggle = (s) => {
+    // Optimistic: flip enabled flag instantly, API in background
+    const newEnabled = s.enabled ? 0 : 1;
+    setList((prev) => prev.map((x) => x.id === s.id ? { ...x, enabled: newEnabled } : x));
+    api.sequences.update(s.id, { enabled: newEnabled }).catch((e) => {
+      toast.error(e.message);
+      load(); // revert
+    });
   };
 
-  const remove = async (id) => {
+  const remove = (id) => {
     if (!confirm('Delete this sequence?')) return;
-    await api.sequences.remove(id);
-    load();
+    // Optimistic: remove from list instantly
+    const backup = list;
+    setList((prev) => prev.filter((x) => x.id !== id));
+    api.sequences.remove(id).catch((e) => {
+      toast.error(e.message);
+      setList(backup); // revert
+    });
   };
 
   return (

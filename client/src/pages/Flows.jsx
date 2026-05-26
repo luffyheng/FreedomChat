@@ -31,15 +31,23 @@ export default function Flows() {
     nav(`/flows/${id}`);
   };
 
-  const remove = async (id) => {
+  const remove = (id) => {
     if (!confirm('Delete this flow?')) return;
-    await api.flows.remove(id);
-    load();
+    const backup = flows;
+    setFlows((prev) => prev.filter((x) => x.id !== id));
+    api.flows.remove(id).catch((e) => {
+      toast.error(e.message);
+      setFlows(backup);
+    });
   };
 
-  const toggle = async (flow) => {
-    await api.flows.update(flow.id, { enabled: flow.enabled ? 0 : 1 });
-    load();
+  const toggle = (flow) => {
+    const newEnabled = flow.enabled ? 0 : 1;
+    setFlows((prev) => prev.map((x) => x.id === flow.id ? { ...x, enabled: newEnabled } : x));
+    api.flows.update(flow.id, { enabled: newEnabled }).catch((e) => {
+      toast.error(e.message);
+      load();
+    });
   };
 
   return (

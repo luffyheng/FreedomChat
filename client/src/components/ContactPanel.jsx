@@ -74,13 +74,9 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
     });
   };
 
-  const runFlow = async (flowId) => {
-    try {
-      await api.people.runFlow(phone, flowId);
-      toast.success('Flow dispatched');
-    } catch (e) {
-      toast.error(e.message);
-    }
+  const runFlow = (flowId) => {
+    toast.success('Flow dispatched');
+    api.people.runFlow(phone, flowId).catch((e) => toast.error(`Flow failed: ${e.message}`));
   };
 
   const subscribe = async (sequenceId) => {
@@ -122,32 +118,39 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
     });
   };
 
-  const sendNow = async (dispatchId) => {
-    toast.success('Sending…');
-    try {
-      await api.people.sendDispatch(phone, dispatchId);
-      toast.success('Sent!');
-      load(); // refresh to show next step
-    } catch (e) {
-      toast.error(e.message);
-    }
+  const sendNow = (dispatchId) => {
+    toast.success('Sent!');
+    api.people.sendDispatch(phone, dispatchId).then(() => load()).catch((e) => {
+      toast.error(`Send failed: ${e.message}`);
+    });
   };
 
-  const addAttr = async (e) => {
+  const addAttr = (e) => {
     e.preventDefault();
     if (!newAttr.key) return;
-    try {
-      await api.people.setAttribute(phone, newAttr.key, newAttr.value);
-      setNewAttr({ key: '', value: '' });
-      load();
-    } catch (err) {
+    const attr = { key: newAttr.key, value: newAttr.value };
+    // Optimistic: prepend to local list, clear form instantly
+    setInfo((prev) => prev ? {
+      ...prev,
+      attributes: [attr, ...(prev.attributes || []).filter((a) => a.key !== attr.key)],
+    } : prev);
+    setNewAttr({ key: '', value: '' });
+    api.people.setAttribute(phone, attr.key, attr.value).catch((err) => {
       toast.error(err.message);
-    }
+      load(); // revert
+    });
   };
 
-  const removeAttr = async (key) => {
-    await api.people.removeAttribute(phone, key);
-    load();
+  const removeAttr = (key) => {
+    // Optimistic: remove from local list instantly
+    setInfo((prev) => prev ? {
+      ...prev,
+      attributes: (prev.attributes || []).filter((a) => a.key !== key),
+    } : prev);
+    api.people.removeAttribute(phone, key).catch((e) => {
+      toast.error(e.message);
+      load();
+    });
   };
 
   return (
