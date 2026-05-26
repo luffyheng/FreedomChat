@@ -66,6 +66,8 @@ seedAdminUser().catch((e) => console.error('[auth] seed failed:', e));
 // Schema migrations — idempotent, safe to run on every boot
 db.exec('ALTER TABLE quick_replies ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0')
   .catch((e) => console.warn('[migration] quick_replies.sort_order:', e.message));
+db.exec('ALTER TABLE quick_replies ADD COLUMN IF NOT EXISTS gap_seconds INTEGER DEFAULT 0')
+  .catch((e) => console.warn('[migration] quick_replies.gap_seconds:', e.message));
 
 // Auto-start WhatsApp on boot — reuses saved session files if they exist (no QR needed)
 initWhatsApp().catch(e => console.error('[whatsapp] auto-start failed:', e));

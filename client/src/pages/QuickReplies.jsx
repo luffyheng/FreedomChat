@@ -111,8 +111,8 @@ export default function QuickReplies() {
   };
 
   /* edit ------------------------------------------------------------------ */
-  const openNew  = () => setEditing({ id: null, name: '', trigger_code: '', presence_seconds: 0, items: [emptyItem()] });
-  const openEdit = (r) => setEditing({ ...r, trigger_code: r.trigger_code || '', presence_seconds: r.presence_seconds || 0, items: r.items?.length ? r.items : [emptyItem()] });
+  const openNew  = () => setEditing({ id: null, name: '', trigger_code: '', presence_seconds: 0, gap_seconds: 0, items: [emptyItem()] });
+  const openEdit = (r) => setEditing({ ...r, trigger_code: r.trigger_code || '', presence_seconds: r.presence_seconds || 0, gap_seconds: r.gap_seconds || 0, items: r.items?.length ? r.items : [emptyItem()] });
   const closeEdit = () => setEditing(null);
 
   const save = async () => {
@@ -125,6 +125,7 @@ export default function QuickReplies() {
         name: name.trim(),
         trigger_code: trigger_code.trim() || null,
         presence_seconds: Number(presence_seconds) || 0,
+        gap_seconds: Number(gap_seconds) || 0,
         items: validItems.map((it, i) => ({ ...it, sort_order: i })),
       };
       if (id) await api.quickReplies.update(id, payload);
@@ -387,6 +388,11 @@ export default function QuickReplies() {
                         <Clock size={10} /> {r.presence_seconds}s
                       </span>
                     )}
+                    {r.gap_seconds > 0 && (
+                      <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                        <Clock size={10} /> {r.gap_seconds}s gap
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -521,21 +527,38 @@ export default function QuickReplies() {
                 </div>
               </div>
 
-              {/* Presence animation */}
-              <div>
-                <label className="eyebrow-ink mb-1.5 flex items-center gap-1.5 block">
-                  <Clock size={11} /> Typing / recording animation
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number" min="0" max="60"
-                    className="input num w-24" placeholder="0"
-                    value={editing.presence_seconds}
-                    onChange={(e) => setEditing({ ...editing, presence_seconds: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
-                  />
-                  <span className="text-[13px] text-ink-mute">seconds (0 = off)</span>
+              {/* Presence animation — before first item */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="eyebrow-ink mb-1.5 flex items-center gap-1.5 block">
+                    <Clock size={11} /> Before first item
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="0" max="60"
+                      className="input num w-24" placeholder="0"
+                      value={editing.presence_seconds}
+                      onChange={(e) => setEditing({ ...editing, presence_seconds: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
+                    />
+                    <span className="text-[13px] text-ink-mute">seconds (0 = off)</span>
+                  </div>
+                  <p className="text-[11px] text-ink-mute mt-1">Shows "recording…" or "typing…" before first message</p>
                 </div>
-                <p className="text-[11px] text-ink-mute mt-1">First item is voice note → shows "recording…", otherwise "typing…"</p>
+                <div>
+                  <label className="eyebrow-ink mb-1.5 flex items-center gap-1.5 block">
+                    <Clock size={11} /> Gap between items
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="0" max="60"
+                      className="input num w-24" placeholder="0"
+                      value={editing.gap_seconds}
+                      onChange={(e) => setEditing({ ...editing, gap_seconds: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })}
+                    />
+                    <span className="text-[13px] text-ink-mute">seconds (0 = off)</span>
+                  </div>
+                  <p className="text-[11px] text-ink-mute mt-1">Shows "recording…" or "typing…" between each message</p>
+                </div>
               </div>
 
               {/* Items */}

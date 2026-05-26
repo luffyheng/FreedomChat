@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/quick-replies — create
 router.post('/', async (req, res) => {
-  const { name, trigger_code = null, presence_seconds = 0, items = [] } = req.body || {};
+  const { name, trigger_code = null, presence_seconds = 0, gap_seconds = 0, items = [] } = req.body || {};
   if (!name?.trim()) return res.status(400).json({ error: 'name required' });
 
   const id = nanoid();
@@ -36,8 +36,8 @@ router.post('/', async (req, res) => {
   }
 
   await db.prepare(
-    'INSERT INTO quick_replies (id, name, trigger_code, presence_seconds, created_at) VALUES ($1,$2,$3,$4,$5)'
-  ).run(id, name.trim(), trigger_code || null, Number(presence_seconds) || 0, now);
+    'INSERT INTO quick_replies (id, name, trigger_code, presence_seconds, gap_seconds, created_at) VALUES ($1,$2,$3,$4,$5,$6)'
+  ).run(id, name.trim(), trigger_code || null, Number(presence_seconds) || 0, Number(gap_seconds) || 0, now);
 
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -69,7 +69,7 @@ router.put('/:id', async (req, res) => {
   const qr = await db.prepare('SELECT * FROM quick_replies WHERE id = $1').get(req.params.id);
   if (!qr) return res.status(404).json({ error: 'not found' });
 
-  const { name, trigger_code, presence_seconds, items } = req.body || {};
+  const { name, trigger_code, presence_seconds, gap_seconds, items } = req.body || {};
 
   if (trigger_code !== undefined && trigger_code !== qr.trigger_code && trigger_code) {
     const existing = await db.prepare(
@@ -82,6 +82,7 @@ router.put('/:id', async (req, res) => {
   if (name !== undefined) updates.name = name.trim();
   if (trigger_code !== undefined) updates.trigger_code = trigger_code || null;
   if (presence_seconds !== undefined) updates.presence_seconds = Number(presence_seconds) || 0;
+  if (gap_seconds !== undefined) updates.gap_seconds = Number(gap_seconds) || 0;
 
   if (Object.keys(updates).length) {
     const keys = Object.keys(updates);
@@ -129,12 +130,27 @@ router.post('/:id/send', async (req, res) => {
 
   try {
     const presenceSec = Number(qr.presence_seconds || 0);
-    if (presenceSec > 0 && items.length > 0) {
-      const presenceState = items[0].type === 'audio' ? 'recording' : 'composing';
-      await sendPresence(phone, presenceState, presenceSec * 1000);
-    }
+    const gapSec = Number(qr.gap_seconds || 0);
 
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+
+      // Before first item: show presence animation (presence_seconds)
+      // Before subsequent items: show gap animation (gap_seconds) or short pause
+      if (i === 0) {
+        if (presenceSec > 0) {
+          const presenceState = item.type === 'audio' ? 'recording' : 'composing';
+          await sendPresence(phone, presenceState, presenceSec * 1000);
+        }
+      } else {
+        if (gapSec > 0) {
+          const presenceState = item.type === 'audio' ? 'recording' : 'composing';
+          await sendPresence(phone, presenceState, gapSec * 1000);
+        } else {
+          await sleep(600);
+        }
+      }
+
       if (item.type === 'text') {
         await sendText(phone, item.content || '');
       } else {
@@ -143,7 +159,6 @@ router.post('/:id/send', async (req, res) => {
           sendAudioAsVoice: item.type === 'audio',
         });
       }
-      if (items.length > 1) await sleep(600);
     }
     res.json({ ok: true, sent: items.length });
   } catch (e) {
