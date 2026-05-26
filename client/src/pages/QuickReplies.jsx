@@ -88,26 +88,21 @@ export default function QuickReplies() {
   };
   const closeSheet = () => { if (!busyPhone) { setSheetQR(null); clearTimeout(doneTimer.current); } };
 
-  const handleSend = async (qrId, phone) => {
+  const handleSend = (qrId, phone) => {
     const target = (phone || sendPhone).trim();
     if (!target) { toast.error('Pick a contact'); return; }
-    if (busyPhone) return;
-    setBusyPhone(target);
-    setDonePhone(null);
+    // Optimistic: show "Sent!" instantly, fire API in background
+    setBusyPhone(null);
+    setDonePhone(target);
     clearTimeout(doneTimer.current);
-    try {
-      await api.quickReplies.send(qrId, target);
-      setBusyPhone(null);
-      setDonePhone(target);
-      doneTimer.current = setTimeout(() => {
-        setDonePhone(null);
-        setSheetQR(null);
-        setSendPhone('');
-      }, 1800);
-    } catch (err) {
-      setBusyPhone(null);
-      toast.error(err.message);
-    }
+    doneTimer.current = setTimeout(() => {
+      setDonePhone(null);
+      setSheetQR(null);
+      setSendPhone('');
+    }, 1200);
+    api.quickReplies.send(qrId, target).catch((err) => {
+      toast.error(`Send failed: ${err.message}`);
+    });
   };
 
   /* edit ------------------------------------------------------------------ */
