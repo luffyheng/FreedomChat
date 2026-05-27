@@ -108,6 +108,9 @@ export async function initWhatsApp() {
     puppeteer: {
       headless: true,
       executablePath,
+      // Default protocolTimeout is 30s — too short for media downloads / large
+      // group fetches. Bump to 120s so audio/image processing doesn't time out.
+      protocolTimeout: 120_000,
       args: [
         '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--disable-gpu',
