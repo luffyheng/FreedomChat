@@ -56,6 +56,7 @@ export default function QuickReplies() {
   const [donePhone, setDonePhone]       = useState(null);
   const [sendPhone, setSendPhone]       = useState('');
   const doneTimer = useRef(null);
+  const inFlightRef = useRef(new Set()); // dedup rapid double-taps
 
   const load = () => {
     if (!pageCache.quickReplies) setRepliesLoading(true);
@@ -91,6 +92,10 @@ export default function QuickReplies() {
   const handleSend = (qrId, phone) => {
     const target = (phone || sendPhone).trim();
     if (!target) { toast.error('Pick a contact'); return; }
+    const key = `${qrId}:${target}`;
+    // Block double-tap: if this exact send is already in-flight, ignore
+    if (inFlightRef.current.has(key)) return;
+    inFlightRef.current.add(key);
     // Optimistic: show "Sent!" instantly, fire API in background
     setBusyPhone(null);
     setDonePhone(target);
@@ -100,9 +105,9 @@ export default function QuickReplies() {
       setSheetQR(null);
       setSendPhone('');
     }, 1200);
-    api.quickReplies.send(qrId, target).catch((err) => {
-      toast.error(`Send failed: ${err.message}`);
-    });
+    api.quickReplies.send(qrId, target)
+      .catch((err) => toast.error(`Send failed: ${err.message}`))
+      .finally(() => inFlightRef.current.delete(key));
   };
 
   /* edit ------------------------------------------------------------------ */

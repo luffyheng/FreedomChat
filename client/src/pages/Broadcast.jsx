@@ -85,6 +85,8 @@ export default function Broadcast() {
   const [now, setNow] = useState(Date.now());
   const [waStatus, setWaStatus] = useState('idle');
 
+  const actionRef = useRef(new Set()); // dedup double-clicks
+
   const [form, setForm] = useState({
     name: '',
     messages: [''],
@@ -172,24 +174,32 @@ export default function Broadcast() {
       toast.error('WhatsApp not connected — go to Connect page first.');
       return;
     }
-    // Optimistic: flip status to running locally
+    const key = `start:${id}`;
+    if (actionRef.current.has(key)) return;
+    actionRef.current.add(key);
     setBroadcasts((prev) => prev.map((b) => b.id === id ? { ...b, status: 'running' } : b));
     toast.success('Transmission started');
-    api.broadcasts.start(id).catch((err) => {
-      toast.error(err.message);
-      load(); // revert
-    });
+    api.broadcasts.start(id)
+      .catch((err) => { toast.error(err.message); load(); })
+      .finally(() => actionRef.current.delete(key));
   };
   const pause = (id) => {
+    const key = `pause:${id}`;
+    if (actionRef.current.has(key)) return;
+    actionRef.current.add(key);
     setBroadcasts((prev) => prev.map((b) => b.id === id ? { ...b, status: 'paused' } : b));
-    api.broadcasts.pause(id).catch((err) => {
-      toast.error(err.message);
-      load();
-    });
+    api.broadcasts.pause(id)
+      .catch((err) => { toast.error(err.message); load(); })
+      .finally(() => actionRef.current.delete(key));
   };
   const sendNow = (id) => {
+    const key = `sendNow:${id}`;
+    if (actionRef.current.has(key)) return;
+    actionRef.current.add(key);
     toast.success('Sending next contact now…');
-    api.broadcasts.sendNow(id).catch((err) => toast.error(err.message));
+    api.broadcasts.sendNow(id)
+      .catch((err) => toast.error(err.message))
+      .finally(() => actionRef.current.delete(key));
   };
   const remove = (id) => {
     if (!confirm('Delete this dispatch? This cannot be undone.')) return;

@@ -108,6 +108,7 @@ export default function Inbox() {
   const [showQR, setShowQR] = useState(false);
   const [quickReplies, setQuickReplies] = useState([]);
   const scrollRef = useRef(null);
+  const sendingRef = useRef(new Set()); // dedup double-taps on send buttons
 
   const loadThreads = () => {
     setThreadsLoading(true);
@@ -157,6 +158,9 @@ export default function Inbox() {
     if (!activePhone || !draft.trim()) return;
     const body = draft;
     const phone = activePhone;
+    const key = `txt:${phone}:${body}`;
+    if (sendingRef.current.has(key)) return; // dedup double Enter
+    sendingRef.current.add(key);
     // Optimistic: append message immediately + clear draft
     const tempMsg = {
       id: `temp-${Date.now()}`,
@@ -166,26 +170,27 @@ export default function Inbox() {
     };
     setMessages((m) => [...m, tempMsg]);
     setDraft('');
-    api.whatsapp.send(phone, body).then(() => {
-      loadThreads();
-      loadMessages(phone);
-    }).catch((err) => {
-      toast.error(err.message);
-      setMessages((m) => m.filter((x) => x.id !== tempMsg.id));
-    });
+    api.whatsapp.send(phone, body)
+      .then(() => { loadThreads(); loadMessages(phone); })
+      .catch((err) => {
+        toast.error(err.message);
+        setMessages((m) => m.filter((x) => x.id !== tempMsg.id));
+      })
+      .finally(() => sendingRef.current.delete(key));
   };
 
   const sendQuickReply = (qrId) => {
     if (!activePhone) return;
     const phone = activePhone;
+    const key = `qr:${qrId}:${phone}`;
+    if (sendingRef.current.has(key)) return; // dedup double-tap
+    sendingRef.current.add(key);
     setShowQR(false);
     toast.success('Sending quick reply…');
-    api.quickReplies.send(qrId, phone).then(() => {
-      loadThreads();
-      loadMessages(phone);
-    }).catch((err) => {
-      toast.error(err.message);
-    });
+    api.quickReplies.send(qrId, phone)
+      .then(() => { loadThreads(); loadMessages(phone); })
+      .catch((err) => toast.error(err.message))
+      .finally(() => sendingRef.current.delete(key));
   };
 
   return (

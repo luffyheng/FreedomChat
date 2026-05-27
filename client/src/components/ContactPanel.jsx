@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   User,
@@ -40,6 +40,7 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
   const [flows, setFlows] = useState([]);
   const [sequences, setSequences] = useState([]);
   const [newAttr, setNewAttr] = useState({ key: '', value: '' });
+  const actionRef = useRef(new Set()); // dedup rapid double-clicks
 
   const load = () => {
     if (!phone) return;
@@ -75,8 +76,13 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
   };
 
   const runFlow = (flowId) => {
+    const key = `flow:${flowId}:${phone}`;
+    if (actionRef.current.has(key)) return;
+    actionRef.current.add(key);
     toast.success('Flow dispatched');
-    api.people.runFlow(phone, flowId).catch((e) => toast.error(`Flow failed: ${e.message}`));
+    api.people.runFlow(phone, flowId)
+      .catch((e) => toast.error(`Flow failed: ${e.message}`))
+      .finally(() => actionRef.current.delete(key));
   };
 
   const subscribe = async (sequenceId) => {
@@ -119,10 +125,14 @@ export default function ContactPanel({ phone, onClose, variant = 'side' }) {
   };
 
   const sendNow = (dispatchId) => {
+    const key = `dispatch:${dispatchId}`;
+    if (actionRef.current.has(key)) return;
+    actionRef.current.add(key);
     toast.success('Sent!');
-    api.people.sendDispatch(phone, dispatchId).then(() => load()).catch((e) => {
-      toast.error(`Send failed: ${e.message}`);
-    });
+    api.people.sendDispatch(phone, dispatchId)
+      .then(() => load())
+      .catch((e) => toast.error(`Send failed: ${e.message}`))
+      .finally(() => actionRef.current.delete(key));
   };
 
   const addAttr = (e) => {
