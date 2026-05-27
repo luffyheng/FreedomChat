@@ -105,6 +105,15 @@ export async function initWhatsApp() {
       clientId: process.env.SESSION_NAME || 'freedomchat-default',
       dataPath: './data/wa-session',
     }),
+    // Pin a known-working WhatsApp Web version — when WA pushes a new version
+    // that breaks the lib, we can stay on this one until whatsapp-web.js
+    // catches up.
+    webVersion: '2.3000.1027077486-alpha',
+    webVersionCache: {
+      type: 'remote',
+      remotePath:
+        'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+    },
     puppeteer: {
       headless: true,
       executablePath,

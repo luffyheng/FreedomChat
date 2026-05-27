@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     chromium \
     ca-certificates \
+    git \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -43,7 +44,9 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+# Use npm install (not ci) — github deps don't always match lockfile,
+# and we now pull whatsapp-web.js straight from main.
+RUN npm install --omit=dev --no-audit --no-fund
 
 COPY . .
 
