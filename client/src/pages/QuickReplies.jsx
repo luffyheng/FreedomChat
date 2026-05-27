@@ -93,12 +93,16 @@ export default function QuickReplies() {
     const target = (phone || sendPhone).trim();
     if (!target) { toast.error('Pick a contact'); return; }
     const key = `${qrId}:${target}`;
-    // Block double-tap: if this exact send is already in-flight, ignore
+    // Triple defence:
+    //   1. inFlightRef — synchronous, blocks rapid double-fire even before
+    //      React re-renders the disabled button (mobile tap-tap is fast)
+    //   2. busyPhone — disables every contact button visually, so the user
+    //      can SEE the send is processing and not tap a sibling button
+    //   3. donePhone — shows the green "Sent!" feedback for confidence
     if (inFlightRef.current.has(key)) return;
     inFlightRef.current.add(key);
-    // Optimistic: show "Sent!" instantly, fire API in background
-    setBusyPhone(null);
-    setDonePhone(target);
+    setBusyPhone(target);
+    setDonePhone(target); // also show "Sent!" optimistically — instant feedback
     clearTimeout(doneTimer.current);
     doneTimer.current = setTimeout(() => {
       setDonePhone(null);
@@ -107,7 +111,10 @@ export default function QuickReplies() {
     }, 1200);
     api.quickReplies.send(qrId, target)
       .catch((err) => toast.error(`Send failed: ${err.message}`))
-      .finally(() => inFlightRef.current.delete(key));
+      .finally(() => {
+        inFlightRef.current.delete(key);
+        setBusyPhone(null);
+      });
   };
 
   /* edit ------------------------------------------------------------------ */
