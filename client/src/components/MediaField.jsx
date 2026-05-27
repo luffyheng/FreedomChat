@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Upload, Link as LinkIcon, X, FileText, Image as ImageIcon, Video, Music } from 'lucide-react';
+import { Upload, Link as LinkIcon, X, FileText, Image as ImageIcon, Video, Music, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api.js';
 
@@ -52,6 +52,31 @@ export default function MediaField({ nodeType, value, onChange }) {
     if (file) handleFile(file);
   };
 
+  const handleDownload = async (url) => {
+    if (!url) return;
+    const filename = decodeURIComponent(url.split('/').pop().split('?')[0] || 'download');
+    try {
+      // Fetch as blob — works for same-origin /uploads/* and any
+      // CORS-allowed remote URL. Forces a real download instead of
+      // opening the file in a new tab.
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (e) {
+      // Fallback — open in new tab so the user can long-press / right-click → save
+      toast.error('Direct download blocked — opened in new tab instead');
+      window.open(url, '_blank', 'noopener');
+    }
+  };
+
   const isImage = nodeType === 'sendImage' || (value && /\.(png|jpg|jpeg|gif|webp)(\?|$)/i.test(value));
   const isVideo = nodeType === 'sendVideo' || (value && /\.(mp4|webm|mov|m4v)(\?|$)/i.test(value));
   const isAudio = nodeType === 'sendAudio' || (value && /\.(mp3|m4a|ogg|wav)(\?|$)/i.test(value));
@@ -69,14 +94,24 @@ export default function MediaField({ nodeType, value, onChange }) {
               <span className="truncate flex-1">{value.split('/').pop()}</span>
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => onChange('')}
-            className="absolute top-1.5 right-1.5 p-1 bg-paper-50 border border-ink/20 text-ink-soft hover:text-stamp-vermillion hover:border-stamp-vermillion transition"
-            title="Remove"
-          >
-            <X size={11} />
-          </button>
+          <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => handleDownload(value)}
+              className="p-1 bg-paper-50 border border-ink/20 text-ink-soft hover:text-ink hover:border-ink transition"
+              title="Download"
+            >
+              <Download size={11} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              className="p-1 bg-paper-50 border border-ink/20 text-ink-soft hover:text-stamp-vermillion hover:border-stamp-vermillion transition"
+              title="Remove"
+            >
+              <X size={11} />
+            </button>
+          </div>
         </div>
       ) : (
         <label
