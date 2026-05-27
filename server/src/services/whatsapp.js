@@ -125,22 +125,34 @@ export async function initWhatsApp() {
   client.on('qr', async (qr) => {
     status = 'qr';
     currentQr = await qrcode.toDataURL(qr);
+    console.log('[whatsapp] QR generated — open Connect page to scan');
     emit('wa:status', { status, qr: currentQr });
+  });
+
+  client.on('loading_screen', (percent, message) => {
+    console.log(`[whatsapp] loading ${percent}% — ${message}`);
   });
 
   client.on('authenticated', () => {
     status = 'authenticated';
     currentQr = null;
+    console.log('[whatsapp] authenticated — waiting for ready…');
     emit('wa:status', { status });
+  });
+
+  client.on('auth_failure', (msg) => {
+    console.error('[whatsapp] auth_failure:', msg);
   });
 
   client.on('ready', () => {
     status = 'ready';
     currentQr = null;
+    console.log('[whatsapp] ready ✓ — can send messages');
     emit('wa:status', { status });
   });
 
   client.on('disconnected', (reason) => {
+    console.log('[whatsapp] disconnected event:', reason);
     client = null;
     currentQr = null;
     if (intentionalLogout) {
